@@ -55,7 +55,7 @@ st.markdown("""
 # --- BASES DE DATOS LOCALES Y GOOGLE SHEETS ---
 ARCHIVO_USUARIOS = 'usuarios.json'
 ARCHIVO_INCIDENCIAS = 'incidencias.json'
-ARCHIVO_EXCEL = 'Tratamientos_Por_Paciente.xlsx'
+ARCHIVO_EXCEL = 'Tratamientos.xlsx'
 
 def cargar_json(archivo, valor_por_defecto):
     if not os.path.exists(archivo):
