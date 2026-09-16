@@ -4,12 +4,10 @@ import json
 import os
 from datetime import datetime
 from fpdf import FPDF
-import tkinter as tk
-from tkinter import filedialog
 import requests
 
 # --- URL DE TU WEB APP DE GOOGLE SHEETS ---
-WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxCPG1HzT8MCwwn0Injc_MpSIV5jhbdkSaefarHVMwkT117rvqPngOxZt2C_E1SnQq8xg/exec"
+WEB_APP_URL = "TU_URL_DE_GOOGLE_APPS_SCRIPT_AQUÍ"
 
 # Configuración inicial de la página optimizada para móviles
 st.set_page_config(
@@ -192,7 +190,6 @@ else:
         st.markdown("<h3 style='margin-top: 0; color: #1a334e;'>🔔 CENTRO DE AVISOS Y TAREAS</h3>", unsafe_allow_html=True)
         
         if es_admin:
-            # Tareas del Administrador (Altas, Bajas y Fármacos pendientes)
             solicitudes_pendientes = [s for s in solicitudes_db if str(s.get('estado')).strip().lower() == 'pendiente' and str(s.get('tipo')).strip().upper() != 'FUERA DE BLISTER (CONFIRMADO)']
             pedidos_blister_pendientes = [s for s in solicitudes_db if str(s.get('tipo')).strip().upper() == 'FUERA DE BLISTER (CONFIRMADO)' and str(s.get('estado')).strip().lower() == 'pendiente']
             
@@ -203,7 +200,6 @@ else:
             else:
                 st.info(f"Tienes **{total_tareas_admin}** asunto(s) pendientes de administración:")
                 
-                # 1. GESTIÓN DE ALTAS, BAJAS Y NUEVOS FÁRMACOS
                 if solicitudes_pendientes:
                     st.markdown("#### 📋 Solicitudes de Altas / Bajas / Fármacos:")
                     for sol in solicitudes_pendientes:
@@ -223,7 +219,6 @@ else:
                                     st.error("Solicitud rechazada.")
                                     st.rerun()
 
-                # 2. AVISO DE PEDIDOS FUERA DE BLÍSTER
                 if pedidos_blister_pendientes:
                     st.markdown("#### 📦 Pedidos Fuera de Blíster:")
                     st.warning(f"Hay **{len(pedidos_blister_pendientes)}** pedido(s) pendientes de Albarán de Entrega.")
@@ -231,7 +226,6 @@ else:
                         st.session_state['pantalla'] = 'admin_gestion_datamatrix'
                         st.rerun()
 
-                # 3. GESTIÓN DE INCIDENCIAS ACTIVAS
                 if incidencias_db:
                     st.markdown("#### 🚨 Incidencias Activas:")
                     incidencias_a_resolver = []
@@ -250,7 +244,6 @@ else:
                         st.rerun()
 
         else:
-            # Tareas / Avisos de Enfermería (Seguimiento de sus solicitudes)
             mis_solicitudes = [s for s in solicitudes_db if str(s.get('solicitante')).strip().lower() == str(st.session_state['usuario']).strip().lower()]
             pendientes_mias = [s for s in mis_solicitudes if str(s.get('estado')).strip().lower() == 'pendiente']
             resueltas_mias = [s for s in mis_solicitudes if str(s.get('estado')).strip().lower() in ['aprobada', 'rechazada']]
@@ -332,42 +325,42 @@ else:
                     datos_ingresados[sol_id] = {"nombre": sol.get('paciente'), "med": med_clean, "cn": cn_input, "lote": lote_input, "cad": cad_input}
                     st.markdown("---")
                 
-                if st.form_submit_button("🖨️ GUARDAR ALBARÁN EN PDF Y REINICIAR"):
-                    root = tk.Tk(); root.withdraw(); root.wm_attributes('-topmost', 1)
-                    archivo_guardado = filedialog.asksaveasfilename(title="Guardar Albarán", defaultextension=".pdf", initialfile=f"albaran_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf")
-                    root.destroy()
+                if st.form_submit_button("🖨️ GENERAR PDF DE ALBARÁN"):
+                    fecha_gen = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+                    pdf = FPDF()
+                    pdf.add_page()
+                    pdf.set_font("Arial", "B", 16)
+                    pdf.cell(200, 10, txt="ALBARÁN DE ENTREGA - FARMACIA VILLEGAS", ln=True, align="C")
+                    pdf.set_font("Arial", "", 11)
+                    pdf.cell(200, 10, txt=f"Fecha: {fecha_gen}", ln=True, align="C")
+                    pdf.ln(10)
                     
-                    if archivo_guardado:
-                        fecha_gen = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-                        pdf = FPDF()
-                        pdf.add_page()
-                        pdf.set_font("Arial", "B", 16)
-                        pdf.cell(200, 10, txt="ALBARÁN DE ENTREGA - FARMACIA VILLEGAS", ln=True, align="C")
-                        pdf.set_font("Arial", "", 11)
-                        pdf.cell(200, 10, txt=f"Fecha: {fecha_gen}", ln=True, align="C")
-                        pdf.ln(10)
-                        
-                        pdf.set_font("Arial", "B", 10)
-                        pdf.cell(45, 10, "PACIENTE", 1)
-                        pdf.cell(85, 10, "MEDICAMENTO", 1)
-                        pdf.cell(25, 10, "CN", 1)
-                        pdf.cell(35, 10, "LOTE / CAD", 1)
+                    pdf.set_font("Arial", "B", 10)
+                    pdf.cell(45, 10, "PACIENTE", 1)
+                    pdf.cell(85, 10, "MEDICAMENTO", 1)
+                    pdf.cell(25, 10, "CN", 1)
+                    pdf.cell(35, 10, "LOTE / CAD", 1)
+                    pdf.ln()
+                    
+                    pdf.set_font("Arial", "", 9)
+                    for sol in pedidos_blister:
+                        sol_id = sol.get('id')
+                        d = datos_ingresados[sol_id]
+                        actualizar_estado_solicitud(sol_id, 'aprobada', fecha_albaran=fecha_gen)
+                        pdf.cell(45, 10, str(d['nombre'][:22]), 1)
+                        pdf.cell(85, 10, str(d['med'][:45]), 1)
+                        pdf.cell(25, 10, str(d['cn'] or '000000'), 1)
+                        pdf.cell(35, 10, f"{d['lote'] or 'L-01'} / {d['cad'] or '12/2028'}", 1)
                         pdf.ln()
                         
-                        pdf.set_font("Arial", "", 9)
-                        for sol in pedidos_blister:
-                            sol_id = sol.get('id')
-                            d = datos_ingresados[sol_id]
-                            actualizar_estado_solicitud(sol_id, 'aprobada', fecha_albaran=fecha_gen)
-                            pdf.cell(45, 10, str(d['nombre'][:22]), 1)
-                            pdf.cell(85, 10, str(d['med'][:45]), 1)
-                            pdf.cell(25, 10, str(d['cn'] or '000000'), 1)
-                            pdf.cell(35, 10, f"{d['lote'] or 'L-01'} / {d['cad'] or '12/2028'}", 1)
-                            pdf.ln()
-                            
-                        pdf.output(archivo_guardado)
-                        st.success(f"✅ ¡Albarán generado y sección reiniciada!")
-                        st.rerun()
+                    pdf_output = pdf.output(dest='S').encode('latin1')
+                    st.success("✅ ¡Albarán generado con éxito!")
+                    st.download_button(
+                        label="📥 DESCARGAR ALBARÁN PDF EN TU EQUIPO",
+                        data=pdf_output,
+                        file_name=f"albaran_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                        mime="application/pdf"
+                    )
 
     elif st.session_state['pantalla'] == 'panel_presolicitudes':
         if st.button("⬅️ VOLVER AL MENÚ", key="vol_pre", use_container_width=True):
