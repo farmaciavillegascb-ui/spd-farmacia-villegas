@@ -143,7 +143,7 @@ else:
             st.session_state['pantalla'] = 'panel_presolicitudes'; st.rerun()
             
         if es_admin:
-            pedidos_blister_pendientes = [s for s in solicitudes_db if str(s.get('tipo')).strip().upper() == 'FUERA DE BLISTER' and str(s.get('estado')).strip().lower() == 'pendiente']
+            pedidos_blister_pendientes = [s for s in solicitudes_db if 'FUERA DE BLISTER' in str(s.get('tipo')).strip().upper() and str(s.get('estado')).strip().lower() == 'pendiente']
             if pedidos_blister_pendientes:
                 if st.button(f"🔔 ALBARÁN DE ENTREGA ({len(pedidos_blister_pendientes)})", key="sb_ped_bli", use_container_width=True):
                     st.session_state['pantalla'] = 'admin_gestion_datamatrix'; st.rerun()
@@ -190,8 +190,8 @@ else:
         st.markdown("<h3 style='margin-top: 0; color: #1a334e;'>🔔 CENTRO DE AVISOS Y TAREAS</h3>", unsafe_allow_html=True)
         
         if es_admin:
-            solicitudes_pendientes = [s for s in solicitudes_db if str(s.get('estado')).strip().lower() == 'pendiente' and str(s.get('tipo')).strip().upper() not in ['FUERA DE BLISTER']]
-            pedidos_blister_pendientes = [s for s in solicitudes_db if str(s.get('tipo')).strip().upper() == 'FUERA DE BLISTER' and str(s.get('estado')).strip().lower() == 'pendiente']
+            solicitudes_pendientes = [s for s in solicitudes_db if str(s.get('estado')).strip().lower() == 'pendiente' and 'FUERA DE BLISTER' not in str(s.get('tipo')).strip().upper()]
+            pedidos_blister_pendientes = [s for s in solicitudes_db if 'FUERA DE BLISTER' in str(s.get('tipo')).strip().upper() and str(s.get('estado')).strip().lower() == 'pendiente']
             
             total_tareas_admin = len(solicitudes_pendientes) + len(pedidos_blister_pendientes) + len(incidencias_db)
             
@@ -304,7 +304,7 @@ else:
             st.session_state['pantalla'] = 'menu'; st.rerun()
             
         st.markdown("<h2>🖨️ ALBARÁN DE ENTREGA</h2>", unsafe_allow_html=True)
-        pedidos_blister = [s for s in solicitudes_db if str(s.get('tipo')).strip().upper() == 'FUERA DE BLISTER' and str(s.get('estado')).strip().lower() == 'pendiente']
+        pedidos_blister = [s for s in solicitudes_db if 'FUERA DE BLISTER' in str(s.get('tipo')).strip().upper() and str(s.get('estado')).strip().lower() == 'pendiente']
         
         if not pedidos_blister:
             st.info("✨ No hay solicitudes de fuera de blíster pendientes. Todo limpio y listo.")
