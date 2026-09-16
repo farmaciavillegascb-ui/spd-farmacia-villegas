@@ -9,7 +9,6 @@ import requests
 # --- URL DE LA WEB APP DE GOOGLE SHEETS ---
 WEB_APP_URL = "TU_URL_DE_GOOGLE_APPS_SCRIPT_AQUÍ"
 
-# Configuración inicial de la página optimizada para móviles
 st.set_page_config(
     page_title="SPD FARMACIA VILLEGAS", 
     page_icon="💊", 
@@ -52,7 +51,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- BASES DE DATOS LOCALES Y GOOGLE SHEETS ---
 ARCHIVO_USUARIOS = 'usuarios.json'
 ARCHIVO_INCIDENCIAS = 'incidencias.json'
 
@@ -68,7 +66,6 @@ def guardar_json(archivo, datos):
     with open(archivo, 'w') as f:
         json.dump(datos, f)
 
-# Funciones de sincronización con Google Sheets
 def obtener_solicitudes():
     try:
         response = requests.get(f"{WEB_APP_URL}?action=leer")
@@ -126,7 +123,6 @@ if st.session_state['usuario'] is None:
                 else:
                     st.error("❌ USUARIO O CONTRASEÑA INCORRECTOS.")
 
-# --- APLICACIÓN PRINCIPAL ---
 else:
     es_admin = (st.session_state['rol'] == 'administrador')
     solicitudes_db = obtener_solicitudes()
@@ -143,9 +139,9 @@ else:
             st.session_state['pantalla'] = 'panel_presolicitudes'; st.rerun()
             
         if es_admin:
-            pedidos_blister_pendientes = [s for s in solicitudes_db if 'FUERA DE BLISTER' in str(s.get('tipo')).strip().upper() and str(s.get('estado')).strip().lower() == 'pendiente']
-            if pedidos_blister_pendientes:
-                if st.button(f"🔔 ALBARÁN DE ENTREGA ({len(pedidos_blister_pendientes)})", key="sb_ped_bli", use_container_width=True):
+            pedidos_pendientes = [s for s in solicitudes_db if 'FUERA DE BLISTER' in str(s.get('tipo')).strip().upper() and str(s.get('estado')).strip().lower() == 'pendiente']
+            if pedidos_pendientes:
+                if st.button(f"🖨️ ALBARÁN ({len(pedidos_pendientes)})", key="sb_ped_bli", use_container_width=True):
                     st.session_state['pantalla'] = 'admin_gestion_datamatrix'; st.rerun()
 
         if st.button("🚪 CERRAR SESIÓN", key="sb_logout", use_container_width=True):
@@ -185,44 +181,42 @@ else:
         st.markdown("<h1 style='text-align:center;'>🏥 SPD FARMACIA</h1>", unsafe_allow_html=True)
         st.markdown("<br>", unsafe_allow_html=True)
         
-        # --- CENTRO DE AVISOS Y GESTIÓN INTELIGENTE ---
         st.markdown("<div class='avisos-container'>", unsafe_allow_html=True)
         st.markdown("<h3 style='margin-top: 0; color: #1a334e;'>🔔 CENTRO DE AVISOS Y TAREAS</h3>", unsafe_allow_html=True)
         
         if es_admin:
             solicitudes_pendientes = [s for s in solicitudes_db if str(s.get('estado')).strip().lower() == 'pendiente' and 'FUERA DE BLISTER' not in str(s.get('tipo')).strip().upper()]
-            pedidos_blister_pendientes = [s for s in solicitudes_db if 'FUERA DE BLISTER' in str(s.get('tipo')).strip().upper() and str(s.get('estado')).strip().lower() == 'pendiente']
+            pedidos_pendientes = [s for s in solicitudes_db if 'FUERA DE BLISTER' in str(s.get('tipo')).strip().upper() and str(s.get('estado')).strip().lower() == 'pendiente']
             
-            total_tareas_admin = len(solicitudes_pendientes) + len(pedidos_blister_pendientes) + len(incidencias_db)
+            total_tareas = len(solicitudes_pendientes) + len(pedidos_pendientes) + len(incidencias_db)
             
-            if total_tareas_admin == 0:
-                st.success("✨ ¡Todo al día! No hay tareas pendientes de resolver.")
+            if total_tareas == 0:
+                st.success("✨ ¡Todo al día! No hay tareas pendientes.")
             else:
-                st.info(f"Tienes **{total_tareas_admin}** asunto(s) pendientes de administración:")
+                st.info(f"Tienes **{total_tareas}** asunto(s) pendientes de administración:")
                 
                 if solicitudes_pendientes:
-                    st.markdown("#### 📋 Solicitudes de Altas / Bajas / Nuevos Fármacos:")
+                    st.markdown("#### 📋 Altas / Bajas / Fármacos:")
                     for sol in solicitudes_pendientes:
                         sol_id = sol.get('id')
                         with st.expander(f"📌 [{sol.get('tipo')}] - {sol.get('paciente')} (Solicitante: {sol.get('solicitante', 'N/A')})"):
-                            st.markdown(f"**Detalles / Motivo:** {sol.get('notas')}")
-                            st.markdown(f"📅 *Fecha:* {sol.get('fecha_solicitud', 'N/A')}")
+                            st.markdown(f"**Detalles:** {sol.get('notas')}")
                             c1, c2 = st.columns(2)
                             with c1:
                                 if st.button("✅ APROBAR", key=f"cent_apr_{sol_id}", use_container_width=True):
                                     actualizar_estado_solicitud(sol_id, 'aprobada')
-                                    st.success("¡Solicitud aprobada correctamente!")
+                                    st.success("¡Aprobado!")
                                     st.rerun()
                             with c2:
                                 if st.button("❌ RECHAZAR", key=f"cent_rech_{sol_id}", use_container_width=True):
                                     actualizar_estado_solicitud(sol_id, 'rechazada')
-                                    st.error("Solicitud rechazada.")
+                                    st.error("Rechazado.")
                                     st.rerun()
 
-                if pedidos_blister_pendientes:
+                if pedidos_pendientes:
                     st.markdown("#### 📦 Pedidos Fuera de Blíster:")
-                    st.warning(f"Hay **{len(pedidos_blister_pendientes)}** pedido(s) pendientes de Albarán de Entrega.")
-                    if st.button("🖨️ IR A GENERAR ALBARÁN DE ENTREGA", key="btn_ir_albaran", use_container_width=True):
+                    st.warning(f"Hay **{len(pedidos_pendientes)}** medicamento(s) esperando Albarán de Entrega y lectura DataMatrix.")
+                    if st.button("🖨️ IR A GENERAR ALBARÁN DE ENTREGA", key="btn_ir_albaran_main", use_container_width=True):
                         st.session_state['pantalla'] = 'admin_gestion_datamatrix'
                         st.rerun()
 
@@ -232,7 +226,7 @@ else:
                     for clave, detalles in incidencias_db.items():
                         pac = clave.split("____")[0] if "____" in clave else "Desconocido"
                         med = clave.split("____")[1] if "____" in clave else clave
-                        st.markdown(f"• **{pac}** - Fármaco: *{med}* ({detalles.get('tipo', 'Incidencia')})")
+                        st.markdown(f"• **{pac}** - Fármaco: *{med}*")
                         if st.button(f"Resolver incidencia de {pac}", key=f"res_aviso_{clave}", use_container_width=True):
                             incidencias_a_resolver.append(clave)
                     
@@ -240,26 +234,20 @@ else:
                         for c in incidencias_a_resolver:
                             del incidencias_db[c]
                         guardar_json(ARCHIVO_INCIDENCIAS, incidencias_db)
-                        st.success("✅ Incidencia resuelta y retirada de avisos.")
+                        st.success("✅ Incidencia resuelta.")
                         st.rerun()
 
         else:
             mis_solicitudes = [s for s in solicitudes_db if str(s.get('solicitante')).strip().lower() == str(st.session_state['usuario']).strip().lower()]
-            pendientes_mias = [s for s in mis_solicitudes if str(s.get('estado')).strip().lower() == 'pendiente']
-            resueltas_mias = [s for s in mis_solicitudes if str(s.get('estado')).strip().lower() in ['aprobada', 'rechazada']]
-            
             if not mis_solicitudes:
-                st.info("ℹ️ No has enviado ninguna solicitud reciente. Utiliza los botones inferiores para tramitar altas, bajas o pedidos.")
+                st.info("ℹ️ No has enviado solicitudes recientes.")
             else:
-                st.markdown(f"**Estado de tus solicitudes enviadas:** (Pendientes: {len(pendientes_mias)} | Resueltas: {len(resueltas_mias)})")
                 for sol in mis_solicitudes:
                     estado_txt = str(sol.get('estado')).upper()
                     color_badge = "#ffc107" if estado_txt == "PENDIENTE" else ("#28a745" if estado_txt == "APROBADA" else "#dc3545")
-                    
                     st.markdown(f"""
                         <div style='background-color: #f8f9fa; padding: 10px; border-radius: 8px; margin-bottom: 8px; border-left: 4px solid {color_badge};'>
                             <b>[{sol.get('tipo')}]</b> Paciente: {sol.get('paciente')}<br>
-                            <span style='font-size: 0.9em; color: #555;'>Detalles: {sol.get('notas')}</span><br>
                             <b>Estado:</b> <span style='color: {color_badge};'><b>{estado_txt}</b></span>
                         </div>
                     """, unsafe_allow_html=True)
@@ -291,53 +279,58 @@ else:
                 if st.button("🖨️ ALBARÁN DE ENTREGA", key="grid_dm", use_container_width=True):
                     st.session_state['pantalla'] = 'admin_gestion_datamatrix'; st.rerun()
             else:
-                if st.button("ℹ️ INFO Y AYUDA", key="grid_info", use_container_width=True):
-                    st.info("ℹ️ Sistema sincronizado con Google Sheets.")
+                if st.button("ℹ️ INFO", key="grid_info", use_container_width=True):
+                    st.info("Sistema conectado con Google Sheets.")
 
     elif st.session_state['pantalla'] == 'admin_gestion_datamatrix':
         if not es_admin:
-            st.warning("⚠️ Acceso restringido exclusivamente al perfil de administrador.")
+            st.warning("⚠️ Acceso restringido.")
             st.session_state['pantalla'] = 'menu'
             st.rerun()
             
         if st.button("⬅️ VOLVER AL MENÚ", key="vol_dm", use_container_width=True):
             st.session_state['pantalla'] = 'menu'; st.rerun()
             
-        st.markdown("<h2>🖨️ ALBARÁN DE ENTREGA</h2>", unsafe_allow_html=True)
+        st.markdown("<h2>🖨️ ALBARÁN DE ENTREGA Y LECTURA DATAMATRIX</h2>", unsafe_allow_html=True)
         pedidos_blister = [s for s in solicitudes_db if 'FUERA DE BLISTER' in str(s.get('tipo')).strip().upper() and str(s.get('estado')).strip().lower() == 'pendiente']
         
         if not pedidos_blister:
-            st.info("✨ No hay solicitudes de fuera de blíster pendientes. Todo limpio y listo.")
+            st.info("✨ No hay medicamentos pendientes de fuera de blíster. Ve al **Directorio de Pacientes**, marca medicamentos y envíalos a farmacia.")
         else:
+            st.markdown("Escanea o introduce los datos de **Lote** y **Caducidad** correspondientes a cada medicamento para generar el albarán oficial:")
             with st.form("form_lectura_datamatrix"):
                 datos_ingresados = {}
                 for idx, sol in enumerate(pedidos_blister):
                     sol_id = sol.get('id')
-                    med_clean = sol.get('medicamento', '')
-                    st.markdown(f"**Paciente:** 👤 {sol.get('paciente')} | **Fármaco:** 💊 {med_clean}")
+                    pac = sol.get('paciente')
+                    med = sol.get('medicamento')
+                    cn = sol.get('cn')
                     
-                    cn_input = st.text_input("CN", value=sol.get('cn', ''), key=f"cn_{sol_id}")
-                    lote_input = st.text_input("LOTE", key=f"lote_{sol_id}")
-                    cad_input = st.text_input("CADUCIDAD", key=f"cad_{sol_id}")
+                    st.markdown(f"👤 **Paciente:** {pac} | 💊 **Fármaco:** {med} | 🏷️ **CN:** {cn}")
+                    c_lote, c_cad = st.columns(2)
+                    with c_lote:
+                        lote_input = st.text_input("LOTE", key=f"lote_{sol_id}")
+                    with c_cad:
+                        cad_input = st.text_input("CADUCIDAD (MM/AAAA)", key=f"cad_{sol_id}")
                     
-                    datos_ingresados[sol_id] = {"nombre": sol.get('paciente'), "med": med_clean, "cn": cn_input, "lote": lote_input, "cad": cad_input}
+                    datos_ingresados[sol_id] = {"nombre": pac, "med": med, "cn": cn, "lote": lote_input, "cad": cad_input}
                     st.markdown("---")
                 
-                if st.form_submit_button("🖨️ GENERAR PDF DE ALBARÁN"):
+                if st.form_submit_button("🖨️ GENERAR Y DESCARGAR ALBARÁN PDF"):
                     fecha_gen = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
                     pdf = FPDF()
                     pdf.add_page()
                     pdf.set_font("Arial", "B", 16)
                     pdf.cell(200, 10, txt="ALBARÁN DE ENTREGA - FARMACIA VILLEGAS", ln=True, align="C")
                     pdf.set_font("Arial", "", 11)
-                    pdf.cell(200, 10, txt=f"Fecha: {fecha_gen}", ln=True, align="C")
+                    pdf.cell(200, 10, txt=f"Fecha emisión: {fecha_gen}", ln=True, align="C")
                     pdf.ln(10)
                     
                     pdf.set_font("Arial", "B", 10)
                     pdf.cell(45, 10, "PACIENTE", 1)
-                    pdf.cell(85, 10, "MEDICAMENTO", 1)
-                    pdf.cell(25, 10, "CN", 1)
-                    pdf.cell(35, 10, "LOTE / CAD", 1)
+                    pdf.cell(75, 10, "MEDICAMENTO", 1)
+                    pdf.cell(20, 10, "CN", 1)
+                    pdf.cell(50, 10, "LOTE / CAD", 1)
                     pdf.ln()
                     
                     pdf.set_font("Arial", "", 9)
@@ -346,13 +339,13 @@ else:
                         d = datos_ingresados[sol_id]
                         actualizar_estado_solicitud(sol_id, 'aprobada', fecha_albaran=fecha_gen)
                         pdf.cell(45, 10, str(d['nombre'][:22]), 1)
-                        pdf.cell(85, 10, str(d['med'][:45]), 1)
-                        pdf.cell(25, 10, str(d['cn'] or '000000'), 1)
-                        pdf.cell(35, 10, f"{d['lote'] or 'L-01'} / {d['cad'] or '12/2028'}", 1)
+                        pdf.cell(75, 10, str(d['med'][:40]), 1)
+                        pdf.cell(20, 10, str(d['cn'] or '000000'), 1)
+                        pdf.cell(50, 10, f"{d['lote'] or 'L-01'} / {d['cad'] or '12/2028'}", 1)
                         pdf.ln()
                         
                     pdf_output = pdf.output(dest='S').encode('latin1')
-                    st.success("✅ ¡Albarán generado con éxito!")
+                    st.success("✅ ¡Albarán generado correctamente!")
                     st.download_button(
                         label="📥 DESCARGAR ALBARÁN PDF EN TU EQUIPO",
                         data=pdf_output,
@@ -368,7 +361,7 @@ else:
         presolicitudes_locales = cargar_json('presolicitudes_blister.json', [])
         
         if not presolicitudes_locales:
-            st.info("✨ No hay medicamentos señalados para fuera de blíster. Ve al **Directorio de Pacientes**, entra en la ficha de un paciente y marca la casilla **Fuera de Blíster** en su tratamiento.")
+            st.info("✨ No hay medicamentos señalados. Ve al **Directorio de Pacientes**, entra en la ficha de un paciente y marca la casilla **Fuera de Blíster** en su tratamiento.")
         else:
             with st.form("form_gestion_presolicitudes"):
                 checks_idx = []
@@ -376,7 +369,7 @@ else:
                     marcado = st.checkbox(f"👤 {item.get('paciente')} - 💊 {item.get('medicamento')} (CN: {item.get('cn', 'N/A')})", key=f"chk_p_{idx}")
                     if marcado: checks_idx.append(idx)
                 
-                if st.form_submit_button("🚀 ENVIAR A FARMACIA"):
+                if st.form_submit_button("🚀 ENVIAR A FARMACIA (APARTADO ALBARÁN)"):
                     if checks_idx:
                         fecha_actual = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
                         nuevos_restantes = []
@@ -388,7 +381,7 @@ else:
                                     "medicamento": item.get('medicamento'),
                                     "cn": item.get('cn', 'N/A'),
                                     "solicitante": st.session_state['usuario'],
-                                    "notas": f"Solicitado fuera de blíster: {item.get('medicamento')}",
+                                    "notas": f"Fuera de blíster: {item.get('medicamento')}",
                                     "estado": "pendiente",
                                     "fecha_solicitud": fecha_actual
                                 })
@@ -396,7 +389,7 @@ else:
                                 nuevos_restantes.append(item)
                         
                         guardar_json('presolicitudes_blister.json', nuevos_restantes)
-                        st.success("✅ ¡Enviado a la farmacia correctamente y disponible en el apartado de Albarán!")
+                        st.success("✅ ¡Enviado a farmacia! Ya puedes acceder al apartado de Albarán para escanear lotes e imprimirlos.")
                         st.rerun()
                     else:
                         st.warning("⚠️ Selecciona al menos un medicamento.")
@@ -433,11 +426,11 @@ else:
                     med = obtener_valor(fila, ['MEDICAMENTO', 'MEDICINA'])
                     cn = obtener_valor(fila, ['CN', 'C.N.', 'CODIGO'])
                     st.markdown(f"**{med}** (CN: {cn})")
-                    if es_admin and st.checkbox("📦 FUERA DE BLISTER", key=f"b_{idx}"):
+                    if st.checkbox("📦 FUERA DE BLISTER", key=f"b_{idx}"):
                         blisters.append({"paciente": paciente, "medicamento": med, "cn": cn})
                     st.markdown("---")
                 
-                if es_admin and st.form_submit_button("📨 AÑADIR A FUERA DE BLISTER"):
+                if st.form_submit_button("📨 AÑADIR A PEDIDO FUERA DE BLISTER"):
                     if blisters:
                         presolicitudes_locales = cargar_json('presolicitudes_blister.json', [])
                         for b_item in blisters:
@@ -474,7 +467,7 @@ else:
                         "solicitante": st.session_state['usuario'], "notas": notas, "estado": "pendiente",
                         "fecha_solicitud": datetime.now().strftime("%d/%m/%Y %H:%M:%S")
                     })
-                    st.success("✅ Solicitud de alta enviada al administrador para su revisión.")
+                    st.success("✅ Solicitud de alta enviada.")
                 else:
                     st.warning("⚠️ Debes introducir el nombre del paciente.")
 
@@ -494,7 +487,7 @@ else:
                         "solicitante": st.session_state['usuario'], "notas": motivo, "estado": "pendiente",
                         "fecha_solicitud": datetime.now().strftime("%d/%m/%Y %H:%M:%S")
                     })
-                    st.success("✅ Solicitud de baja enviada al administrador para su revisión.")
+                    st.success("✅ Solicitud de baja enviada.")
                 else:
                     st.warning("⚠️ Debes indicar el motivo de la baja.")
 
@@ -515,7 +508,6 @@ else:
                     <div class='card-incidencia'>
                         <b>👤 Paciente:</b> {pac}<br>
                         <b>💊 Fármaco:</b> {med}<br>
-                        <b>Tipo:</b> {detalles.get('tipo', 'N/A')}<br>
                         <b>Observaciones:</b> {detalles.get('observaciones', 'N/A')}
                     </div>
                 """, unsafe_allow_html=True)
@@ -527,5 +519,5 @@ else:
                 for c in incidencias_a_borrar:
                     del incidencias_db[c]
                 guardar_json(ARCHIVO_INCIDENCIAS, incidencias_db)
-                st.success("✅ Incidencia resuelta y eliminada correctamente.")
+                st.success("✅ Incidencia resuelta y eliminada.")
                 st.rerun()
