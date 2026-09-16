@@ -6,7 +6,7 @@ from datetime import datetime
 from fpdf import FPDF
 import requests
 
-# --- URL DE TU WEB APP DE GOOGLE SHEETS ---
+# --- URL DE LA WEB APP DE GOOGLE SHEETS ---
 WEB_APP_URL = "TU_URL_DE_GOOGLE_APPS_SCRIPT_AQUÍ"
 
 # Configuración inicial de la página optimizada para móviles
@@ -201,7 +201,7 @@ else:
                 st.info(f"Tienes **{total_tareas_admin}** asunto(s) pendientes de administración:")
                 
                 if solicitudes_pendientes:
-                    st.markdown("#### 📋 Solicitudes de Altas / Bajas / Fármacos / Fuera de Blíster:")
+                    st.markdown("#### 📋 Solicitudes de Altas / Bajas / Nuevos Fármacos:")
                     for sol in solicitudes_pendientes:
                         sol_id = sol.get('id')
                         with st.expander(f"📌 [{sol.get('tipo')}] - {sol.get('paciente')} (Solicitante: {sol.get('solicitante', 'N/A')})"):
@@ -307,7 +307,7 @@ else:
         pedidos_blister = [s for s in solicitudes_db if str(s.get('tipo')).strip().upper() == 'FUERA DE BLISTER' and str(s.get('estado')).strip().lower() == 'pendiente']
         
         if not pedidos_blister:
-            st.info("✨ No hay solicitudes de blister pendientes. Todo limpio y listo.")
+            st.info("✨ No hay solicitudes de fuera de blíster pendientes. Todo limpio y listo.")
         else:
             with st.form("form_lectura_datamatrix"):
                 datos_ingresados = {}
@@ -396,7 +396,7 @@ else:
                                 nuevos_restantes.append(item)
                         
                         guardar_json('presolicitudes_blister.json', nuevos_restantes)
-                        st.success("✅ ¡Enviado a la farmacia correctamente!")
+                        st.success("✅ ¡Enviado a la farmacia correctamente y disponible en el apartado de Albarán!")
                         st.rerun()
                     else:
                         st.warning("⚠️ Selecciona al menos un medicamento.")
@@ -444,7 +444,7 @@ else:
                             if not any(p['paciente'] == b_item['paciente'] and p['medicamento'] == b_item['medicamento'] for p in presolicitudes_locales):
                                 presolicitudes_locales.append(b_item)
                         guardar_json('presolicitudes_blister.json', presolicitudes_locales)
-                        st.success("✅ ¡Añadido al pedido fuera de blíster! Ve a 'Pedido Fuera de Blister' para enviarlo a farmacia.")
+                        st.success("✅ ¡Añadido! Ve a 'Pedido Fuera de Blíster' en el menú para enviarlo a farmacia.")
 
         with tab2:
             with st.form("form_n"):
