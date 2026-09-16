@@ -55,7 +55,6 @@ st.markdown("""
 # --- BASES DE DATOS LOCALES Y GOOGLE SHEETS ---
 ARCHIVO_USUARIOS = 'usuarios.json'
 ARCHIVO_INCIDENCIAS = 'incidencias.json'
-ARCHIVO_EXCEL = 'Tratamientos.xlsx'
 
 def cargar_json(archivo, valor_por_defecto):
     if not os.path.exists(archivo):
@@ -154,9 +153,15 @@ else:
 
     @st.cache_data
     def cargar_datos():
-        if not os.path.exists(ARCHIVO_EXCEL): return None, "No se encuentra el Excel de tratamientos."
+        # Búsqueda inteligente de cualquier archivo Excel disponible en el directorio
+        archivos_en_carpeta = os.listdir('.')
+        excel_encontrado = next((f for f in archivos_en_carpeta if f.endswith('.xlsx') and not f.startswith('~$')), None)
+        
+        if not excel_encontrado:
+            return None, "No se encuentra ningún archivo Excel (.xlsx) en el repositorio de GitHub."
+            
         try:
-            xls = pd.ExcelFile(ARCHIVO_EXCEL)
+            xls = pd.ExcelFile(excel_encontrado)
             df = pd.concat([xls.parse(sheet) for sheet in xls.sheet_names], ignore_index=True)
             df.columns = df.columns.str.strip().str.upper()
             return df, None
