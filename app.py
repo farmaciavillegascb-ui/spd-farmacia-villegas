@@ -143,7 +143,7 @@ else:
             st.session_state['pantalla'] = 'panel_presolicitudes'; st.rerun()
             
         if es_admin:
-            pedidos_blister_pendientes = [s for s in solicitudes_db if str(s.get('tipo')) == 'FUERA DE BLISTER (CONFIRMADO)' and str(s.get('estado')) == 'pendiente']
+            pedidos_blister_pendientes = [s for s in solicitudes_db if str(s.get('tipo')).strip().upper() == 'FUERA DE BLISTER' and str(s.get('estado')).strip().lower() == 'pendiente']
             if pedidos_blister_pendientes:
                 if st.button(f"🔔 ALBARÁN DE ENTREGA ({len(pedidos_blister_pendientes)})", key="sb_ped_bli", use_container_width=True):
                     st.session_state['pantalla'] = 'admin_gestion_datamatrix'; st.rerun()
@@ -153,13 +153,10 @@ else:
 
     @st.cache_data
     def cargar_datos():
-        # Búsqueda inteligente de cualquier archivo Excel disponible en el directorio
         archivos_en_carpeta = os.listdir('.')
         excel_encontrado = next((f for f in archivos_en_carpeta if f.endswith('.xlsx') and not f.startswith('~$')), None)
-        
         if not excel_encontrado:
-            return None, "No se encuentra ningún archivo Excel (.xlsx) en el repositorio de GitHub."
-            
+            return None, "No se encuentra ningún archivo Excel (.xlsx) en el repositorio."
         try:
             xls = pd.ExcelFile(excel_encontrado)
             df = pd.concat([xls.parse(sheet) for sheet in xls.sheet_names], ignore_index=True)
@@ -188,15 +185,13 @@ else:
         st.markdown("<h1 style='text-align:center;'>🏥 SPD FARMACIA</h1>", unsafe_allow_html=True)
         st.markdown("<br>", unsafe_allow_html=True)
         
-        # ==========================================
         # --- CENTRO DE AVISOS Y GESTIÓN INTELIGENTE ---
-        # ==========================================
         st.markdown("<div class='avisos-container'>", unsafe_allow_html=True)
         st.markdown("<h3 style='margin-top: 0; color: #1a334e;'>🔔 CENTRO DE AVISOS Y TAREAS</h3>", unsafe_allow_html=True)
         
         if es_admin:
-            solicitudes_pendientes = [s for s in solicitudes_db if str(s.get('estado')).strip().lower() == 'pendiente' and str(s.get('tipo')).strip().upper() != 'FUERA DE BLISTER (CONFIRMADO)']
-            pedidos_blister_pendientes = [s for s in solicitudes_db if str(s.get('tipo')).strip().upper() == 'FUERA DE BLISTER (CONFIRMADO)' and str(s.get('estado')).strip().lower() == 'pendiente']
+            solicitudes_pendientes = [s for s in solicitudes_db if str(s.get('estado')).strip().lower() == 'pendiente' and str(s.get('tipo')).strip().upper() not in ['FUERA DE BLISTER']]
+            pedidos_blister_pendientes = [s for s in solicitudes_db if str(s.get('tipo')).strip().upper() == 'FUERA DE BLISTER' and str(s.get('estado')).strip().lower() == 'pendiente']
             
             total_tareas_admin = len(solicitudes_pendientes) + len(pedidos_blister_pendientes) + len(incidencias_db)
             
@@ -206,7 +201,7 @@ else:
                 st.info(f"Tienes **{total_tareas_admin}** asunto(s) pendientes de administración:")
                 
                 if solicitudes_pendientes:
-                    st.markdown("#### 📋 Solicitudes de Altas / Bajas / Fármacos:")
+                    st.markdown("#### 📋 Solicitudes de Altas / Bajas / Fármacos / Fuera de Blíster:")
                     for sol in solicitudes_pendientes:
                         sol_id = sol.get('id')
                         with st.expander(f"📌 [{sol.get('tipo')}] - {sol.get('paciente')} (Solicitante: {sol.get('solicitante', 'N/A')})"):
@@ -270,7 +265,6 @@ else:
                     """, unsafe_allow_html=True)
                     
         st.markdown("</div>", unsafe_allow_html=True)
-        # ==========================================
 
         r1_c1, r1_c2 = st.columns(2)
         with r1_c1:
@@ -310,7 +304,7 @@ else:
             st.session_state['pantalla'] = 'menu'; st.rerun()
             
         st.markdown("<h2>🖨️ ALBARÁN DE ENTREGA</h2>", unsafe_allow_html=True)
-        pedidos_blister = [s for s in solicitudes_db if str(s.get('tipo')).strip().upper() == 'FUERA DE BLISTER (CONFIRMADO)' and str(s.get('estado')).strip().lower() == 'pendiente']
+        pedidos_blister = [s for s in solicitudes_db if str(s.get('tipo')).strip().upper() == 'FUERA DE BLISTER' and str(s.get('estado')).strip().lower() == 'pendiente']
         
         if not pedidos_blister:
             st.info("✨ No hay solicitudes de blister pendientes. Todo limpio y listo.")
@@ -320,7 +314,6 @@ else:
                 for idx, sol in enumerate(pedidos_blister):
                     sol_id = sol.get('id')
                     med_clean = sol.get('medicamento', '')
-                    fecha_sol = sol.get('fecha_solicitud', 'N/A')
                     st.markdown(f"**Paciente:** 👤 {sol.get('paciente')} | **Fármaco:** 💊 {med_clean}")
                     
                     cn_input = st.text_input("CN", value=sol.get('cn', ''), key=f"cn_{sol_id}")
@@ -375,7 +368,7 @@ else:
         presolicitudes_locales = cargar_json('presolicitudes_blister.json', [])
         
         if not presolicitudes_locales:
-            st.info("✨ No hay medicamentos señalados para fuera de blíster.")
+            st.info("✨ No hay medicamentos señalados para fuera de blíster. Ve al **Directorio de Pacientes**, entra en la ficha de un paciente y marca la casilla **Fuera de Blíster** en su tratamiento.")
         else:
             with st.form("form_gestion_presolicitudes"):
                 checks_idx = []
@@ -390,7 +383,7 @@ else:
                         for idx, item in enumerate(presolicitudes_locales):
                             if idx in checks_idx:
                                 guardar_solicitud({
-                                    "tipo": "FUERA DE BLISTER (CONFIRMADO)",
+                                    "tipo": "FUERA DE BLISTER",
                                     "paciente": item.get('paciente'),
                                     "medicamento": item.get('medicamento'),
                                     "cn": item.get('cn', 'N/A'),
@@ -403,7 +396,7 @@ else:
                                 nuevos_restantes.append(item)
                         
                         guardar_json('presolicitudes_blister.json', nuevos_restantes)
-                        st.success("✅ ¡Enviado a la farmacia y reiniciado!")
+                        st.success("✅ ¡Enviado a la farmacia correctamente!")
                         st.rerun()
                     else:
                         st.warning("⚠️ Selecciona al menos un medicamento.")
@@ -451,7 +444,7 @@ else:
                             if not any(p['paciente'] == b_item['paciente'] and p['medicamento'] == b_item['medicamento'] for p in presolicitudes_locales):
                                 presolicitudes_locales.append(b_item)
                         guardar_json('presolicitudes_blister.json', presolicitudes_locales)
-                        st.success("✅ ¡Añadido al pedido fuera de blíster!")
+                        st.success("✅ ¡Añadido al pedido fuera de blíster! Ve a 'Pedido Fuera de Blister' para enviarlo a farmacia.")
 
         with tab2:
             with st.form("form_n"):
