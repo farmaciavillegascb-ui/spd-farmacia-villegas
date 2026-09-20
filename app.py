@@ -38,6 +38,38 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# ----------------------------------------------------
+# CARGA DE BASE DE DATOS DE MEDICAMENTOS (EN CACHÉ)
+# ----------------------------------------------------
+@st.cache_data
+def cargar_base_medicamentos():
+    """Lee el listado oficial y lo carga en memoria ultrarrápida."""
+    ruta_bd = "listado_de_medicamentos.xlsx"
+    if not os.path.exists(ruta_bd):
+        return {}
+    try:
+        df_bd = pd.read_excel(ruta_bd, sheet_name=0, usecols=['Cod. Nacional', 'Laboratorio', 'Presentación'])
+        df_bd = df_bd.dropna(subset=['Cod. Nacional'])
+        df_bd['CN'] = df_bd['Cod. Nacional'].astype(str).str.replace(r'\.0$', '', regex=True)
+        
+        # Separar la Presentación para extraer nombre y tamaño de forma eficiente
+        partes = df_bd['Presentación'].astype(str).str.split(',', n=1, expand=True)
+        df_bd['farmaco'] = partes[0].fillna('').astype(str).str.strip().str.slice(0, 45)
+        if partes.shape[1] > 1:
+            df_bd['tamano'] = partes[1].fillna('').astype(str).str.strip().str.slice(0, 25)
+        else:
+            df_bd['tamano'] = ""
+            
+        df_bd['marca'] = df_bd['Laboratorio'].fillna('').astype(str).str.slice(0, 25)
+        
+        df_bd = df_bd.set_index('CN')
+        return df_bd[['marca', 'farmaco', 'tamano']].to_dict(orient='index')
+    except Exception as e:
+        print(f"Aviso: No se pudo cargar BD de medicamentos ({e})")
+        return {}
+
+BD_MEDICAMENTOS = cargar_base_medicamentos()
+
 EXCEL_PATH = "Tratamientos_Por_Paciente.xlsx"
 
 def cargar_datos_excel():
@@ -64,17 +96,14 @@ def cargar_datos_excel():
             }
     return pacientes_dict
 
-def traducir_datamatrix(raw_code):
-    """
-    Decodificador analítico GS1 DataMatrix.
-    Cruza el CN extraído con una Base de Datos de medicamentos para rellenar los nombres en texto.
-    """
+def traducir_datamatrix(raw_code, bd_medicamentos):
+    """Decodificador DataMatrix que consulta el Excel oficial."""
     res = {'marca': '', 'farmaco': '', 'dosificacion': '', 'tamano': '', 'cn': '', 'lote': '', 'caducidad': ''}
     if not raw_code: return res
     
     clean = str(raw_code).replace('\x1D', '').replace('(', '').replace(')', '').replace(']', '').strip()
     
-    # 1. Extraer CN, Lote y Caducidad
+    # 1. Extracción de CN, Lote y Caducidad del código
     try:
         if '01' in clean:
             idx = clean.find('01')
@@ -108,46 +137,23 @@ def traducir_datamatrix(raw_code):
         res['cn'] = clean[:6] if len(clean)>=6 else "123456"
         res['lote'] = "LOTE01"
         res['caducidad'] = "31/12/2028"
-
-    # 2. BASE DE DATOS INTERNA DE MEDICAMENTOS (CN -> Nombre)
-    # Aquí puedes añadir todos los CN habituales que manejéis en la farmacia
-    base_datos_medicamentos = {
-        "663148": {"marca": "Cinfa", "farmaco": "Paracetamol", "dosificacion": "1g", "tamano": "40 comp"},
-        "704073": {"marca": "Normon", "farmaco": "Ibuprofeno", "dosificacion": "600mg", "tamano": "40 comp"},
-        "698271": {"marca": "Kern Pharma", "farmaco": "Omeprazol", "dosificacion": "20mg", "tamano": "28 caps"},
-        "703111": {"marca": "Sandoz", "farmaco": "Amoxicilina", "dosificacion": "500mg", "tamano": "24 caps"},
-        "656114": {"marca": "Bayer", "farmaco": "Aspirina", "dosificacion": "500mg", "tamano": "20 comp"},
-        "721020": {"marca": "Cinfa", "farmaco": "Loratadina", "dosificacion": "10mg", "tamano": "20 comp"},
-        "660001": {"marca": "Kern Pharma", "farmaco": "Diazepam", "dosificacion": "5mg", "tamano": "30 comp"},
-        "658231": {"marca": "Lacer", "farmaco": "Trombocid", "dosificacion": "0.1%", "tamano": "Pomada"},
-        "650234": {"marca": "Normon", "farmaco": "Ibuprofeno", "dosificacion": "600mg", "tamano": "40 comp"}
-    }
-
-    # Si el CN extraído está en la base de datos, rellena los textos mágicamente
-    if res['cn'] in base_datos_medicamentos:
-        datos_med = base_datos_medicamentos[res['cn']]
-        res['marca'] = datos_med['marca']
-        res['farmaco'] = datos_med['farmaco']
-        res['dosificacion'] = datos_med['dosificacion']
-        res['tamano'] = datos_med['tamano']
+        
+    # 2. Búsqueda Mágica en la Base de Datos Oficial
+    if res['cn'] in bd_medicamentos:
+        datos = bd_medicamentos[res['cn']]
+        res['marca'] = str(datos.get('marca', ''))
+        res['farmaco'] = str(datos.get('farmaco', ''))
+        res['tamano'] = str(datos.get('tamano', ''))
     else:
-        # Si escaneas un CN que no está arriba, te lo indica para que lo rellenes a mano
-        res['marca'] = ""
-        res['farmaco'] = f"Fármaco Desconocido (CN: {res['cn']})"
-        res['dosificacion'] = ""
-        res['tamano'] = ""
+        res['farmaco'] = f"Desconocido (CN: {res['cn']})"
         
     return res
 
 def limpiar_texto_pdf(texto):
-    """
-    Solución Definitiva para UnicodeEncodeError:
-    Fuerza la eliminación de cualquier carácter no-ASCII (tildes, eñes)
-    exclusivamente a la hora de imprimir el PDF.
-    """
+    """Filtro extremo para evitar el UnicodeEncodeError al generar el PDF."""
     if not texto: return ""
-    texto_str = str(texto).replace('ñ', 'n').replace('Ñ', 'N')
-    # Normalizamos y nos quedamos solo con los caracteres ASCII básicos
+    texto_str = str(texto).replace('ñ', 'n').replace('Ñ', 'N').replace('º', '.').replace('ª', '.')
+    # Normaliza eliminando tildes y caracteres no compatibles
     texto_limpio = unicodedata.normalize('NFKD', texto_str).encode('ASCII', 'ignore').decode('ASCII')
     return texto_limpio
 
@@ -214,8 +220,7 @@ def generar_albaran_devolucion_pdf(nombre_paciente, ref_paciente, lista_devoluci
     return pdf.output(dest='S').encode('latin1')
 
 def obtener_parametro_url(nombre):
-    try:
-        return st.query_params.get(nombre)
+    try: return st.query_params.get(nombre)
     except AttributeError:
         try:
             params = st.experimental_get_query_params()
@@ -404,9 +409,9 @@ elif st.session_state["pagina"] == "baja_paciente":
         pac_obj = st.session_state["paciente_a_baja_obj"]
         st.info(f"📦 Paciente en baja: **{pac_obj['nombre']}**")
         
-        # EL ESCÁNER DATAMATRIX MÁGICO
+        # EL ESCÁNER DATAMATRIX MÁGICO ENLAZADO A LA BASE DE DATOS
         cadena_dm = st.text_input("📥 Escanee o introduzca el código DataMatrix en esta casilla:", key="input_dm_baja")
-        parsed = traducir_datamatrix(cadena_dm)
+        parsed = traducir_datamatrix(cadena_dm, BD_MEDICAMENTOS)
 
         st.markdown("##### 📝 Ficha del Medicamento (Rellenada Automáticamente)")
         with st.form("form_escanear_datamatrix_baja"):
@@ -436,7 +441,7 @@ elif st.session_state["pagina"] == "baja_paciente":
             st.session_state["df_devolucion"] = st.data_editor(st.session_state["df_devolucion"], use_container_width=True, hide_index=True)
             col_pdf, col_fin = st.columns(2)
             with col_pdf:
-                # SE GENERA EL PDF PROTEGIDO CON LIMPIADOR
+                # SE GENERA EL PDF PROTEGIDO CON LIMPIADOR EXTREMO
                 pdf_bytes = generar_albaran_devolucion_pdf(pac_obj['nombre'], pac_obj['ref'], st.session_state["df_devolucion"].to_dict(orient="records"))
                 st.download_button("📄 Imprimir Albarán de Devolución (PDF)", data=pdf_bytes, file_name=f"Devolucion.pdf", mime="application/pdf", use_container_width=True)
             with col_fin:
@@ -456,7 +461,8 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
     if not shared_data["pedidos_definitivos"]: st.info("No hay pedidos definitivos pendientes.")
     else:
         cadena_dm_pedido = st.text_input("📥 Escanee el DataMatrix del medicamento:", key="input_dm_pedido")
-        parsed_ped = traducir_datamatrix(cadena_dm_pedido)
+        parsed_ped = traducir_datamatrix(cadena_dm_pedido, BD_MEDICAMENTOS)
+        
         if cadena_dm_pedido:
             for item in shared_data["pedidos_definitivos"]:
                 if not item.get("datamatrix"):
@@ -471,7 +477,7 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
         st.markdown("---")
         col_pdf, col_act = st.columns(2)
         with col_pdf:
-            # SE GENERA EL PDF PROTEGIDO CON LIMPIADOR
+            # SE GENERA EL PDF PROTEGIDO CON LIMPIADOR EXTREMO
             pdf_bytes = generar_albaran_pdf(shared_data["pedidos_definitivos"])
             st.download_button("📄 Imprimir Albarán de Entrega (PDF)", data=pdf_bytes, file_name="Albaran_Entrega.pdf", mime="application/pdf", use_container_width=True)
         with col_act:
@@ -483,5 +489,5 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
 
 # OTROS MÓDULOS (Altas, Usuarios, Pacientes, etc) ENLAZADOS AL MENÚ...
 elif st.session_state["pagina"] in ["alta_paciente", "gestion_usuarios", "lista_pacientes", "detalle_paciente", "seleccion_productos_enfermera", "solicitud_pedido_admin", "incidencias"]:
-    st.info("Módulo en ejecución (código compactado por espacio). Pulsa Volver.")
+    st.info("Módulo temporalmente oculto por espacio en este snippet. Usa el botón volver.")
     if st.button("⬅ Volver"): st.session_state["pagina"] = "inicio"; st.rerun()
