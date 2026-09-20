@@ -151,7 +151,7 @@ def cargar_datos_excel():
     return pacientes_dict
 
 def traducir_datamatrix(raw_code):
-    """Decodificador inteligente GS1 DataMatrix farmacéutico."""
+    """Decodificador analítico GS1 DataMatrix para rellenar campos específicos."""
     res = {
         'marca': 'Genérico Farmacia',
         'farmaco': 'Medicamento Genérico',
@@ -624,7 +624,9 @@ elif st.session_state["pagina"] == "alta_paciente":
                 st.error("Introduce el nombre del paciente.")
     if st.button("⬅ Volver"): st.session_state["pagina"] = "inicio"; st.rerun()
 
-# BAJAS DE PACIENTE Y DEVOLUCIÓN CON FICHA VISUAL DE MEDICAMENTO
+# ----------------------------------------------------
+# BAJAS DE PACIENTE Y DEVOLUCIÓN CON RELLENADO DE CASILLAS
+# ----------------------------------------------------
 elif st.session_state["pagina"] == "baja_paciente":
     if not tiene_permiso(rol_actual, "bajas"): st.error("Sin permiso."); st.stop()
         
@@ -667,45 +669,27 @@ elif st.session_state["pagina"] == "baja_paciente":
         pac_obj = st.session_state["paciente_a_baja_obj"]
         st.info(f"📦 Paciente en baja: **{pac_obj['nombre']}** (Ref: {pac_obj['ref']})")
         
-        st.markdown("##### 📷 Escáner de Código DataMatrix")
-        cadena_dm = st.text_input("Escanee o pegue aquí el código DataMatrix del medicamento:", key="input_dm_baja")
-        
-        # TRADUCCIÓN AUTOMÁTICA DEL CÓDIGO
+        # Casilla dedicada para leer el DataMatrix y recargar la página con los datos traducidos
+        def trigger_traduccion_baja():
+            pass
+
+        cadena_dm = st.text_input("📥 Escanee o introduzca el código DataMatrix en esta casilla:", key="input_dm_baja", on_change=trigger_traduccion_baja)
         parsed = traducir_datamatrix(cadena_dm)
 
-        # ----------------------------------------------------
-        # FICHA VISUAL DE MEDICAMENTO DECODIFICADA
-        # ----------------------------------------------------
-        if cadena_dm:
-            st.markdown(f"""
-            <div style="background: #ffffff; padding: 20px; border-radius: 12px; border: 2px solid #0ea5e9; box-shadow: 0 4px 12px rgba(14,165,233,0.1); margin-bottom: 20px;">
-                <h4 style="color: #0369a1; margin-top: 0; border-bottom: 2px solid #bae6fd; padding-bottom: 8px;">💊 Ficha de Medicamento Decodificada</h4>
-                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; font-size: 14px; color: #334155;">
-                    <div><b>Marca:</b> {parsed['marca']}</div>
-                    <div><b>Fármaco:</b> {parsed['farmaco']}</div>
-                    <div><b>Dosificación:</b> {parsed['dosificacion']}</div>
-                    <div><b>Tamaño envase:</b> {parsed['tamano']}</div>
-                    <div><b>Código Nacional (CN):</b> {parsed['cn']}</div>
-                    <div><b>Lote:</b> {parsed['lote']}</div>
-                    <div><b>Caducidad:</b> {parsed['caducidad']}</div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-
+        st.markdown("##### 📝 Ficha del Medicamento (Rellenada Automáticamente)")
         with st.form("form_escanear_datamatrix_baja"):
-            st.markdown("Verifique o ajuste los datos extraídos e indique las pastillas restantes:")
             c1, c2, c3 = st.columns(3)
-            with c1: m_val = st.text_input("Marca:", value=parsed['marca'])
-            with c2: f_val = st.text_input("Fármaco:", value=parsed['farmaco'])
+            with c1: m_val = st.text_input("Marca del medicamento:", value=parsed['marca'])
+            with c2: f_val = st.text_input("Nombre del fármaco:", value=parsed['farmaco'])
             with c3: d_val = st.text_input("Dosificación:", value=parsed['dosificacion'])
                 
             c4, c5, c6, c7 = st.columns(4)
-            with c4: t_val = st.text_input("Tamaño:", value=parsed['tamano'])
-            with c5: cn_val = st.text_input("CN:", value=parsed['cn'])
-            with c6: l_val = st.text_input("Lote:", value=parsed['lote'])
-            with c7: cad_val = st.text_input("Caducidad:", value=parsed['caducidad'])
+            with c4: t_val = st.text_input("Tamaño envase:", value=parsed['tamano'])
+            with c5: cn_val = st.text_input("Código Nacional (CN):", value=parsed['cn'])
+            with c6: l_val = st.text_input("Lote del medicamento:", value=parsed['lote'])
+            with c7: cad_val = st.text_input("Caducidad del medicamento:", value=parsed['caducidad'])
                 
-            pastillas_input = st.number_input("Pastillas restantes en el envase:", min_value=0, value=0, step=1)
+            pastillas_input = st.number_input("Pastillas restantes:", min_value=0, value=0, step=1)
             
             if st.form_submit_button("➕ Añadir a la Lista de Devolución"):
                 nuevo_reg = {
@@ -714,7 +698,7 @@ elif st.session_state["pagina"] == "baja_paciente":
                     'Caducidad': cad_val.strip(), 'Pastillas restantes': int(pastillas_input)
                 }
                 st.session_state["df_devolucion"] = pd.concat([st.session_state["df_devolucion"], pd.DataFrame([nuevo_reg])], ignore_index=True)
-                st.success("¡Medicamento añadido a la devolución correctamente!")
+                st.success("¡Medicamento añadido correctamente a la devolución!")
 
         if not st.session_state["df_devolucion"].empty:
             st.markdown("##### 📋 Listado de Devolución Actual")
@@ -786,7 +770,7 @@ elif st.session_state["pagina"] == "solicitud_pedido_admin":
     else: st.info("Vacío.")
     if st.button("⬅ Volver"): st.session_state["pagina"] = "inicio"; st.rerun()
 
-# PEDIDOS DEFINITIVOS CON TRADUCCIÓN DATAMATRIX
+# PEDIDOS DEFINITIVOS CON RELLENADO DE CASILLAS
 elif st.session_state["pagina"] == "pedidos_definitivos_admin":
     if not tiene_permiso(rol_actual, "pedidos_def"): st.error("Sin permiso."); st.stop()
         
@@ -795,7 +779,7 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
         st.info("No hay pedidos definitivos pendientes.")
     else:
         st.markdown("##### ⚡ Escáner Rápido DataMatrix")
-        cadena_dm_pedido = st.text_input("Escanee el DataMatrix del medicamento:", key="input_dm_pedido")
+        cadena_dm_pedido = st.text_input("📥 Escanee el DataMatrix del medicamento:", key="input_dm_pedido")
         
         parsed_ped = traducir_datamatrix(cadena_dm_pedido)
         if cadena_dm_pedido:
@@ -816,8 +800,8 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
                 "cn": st.column_config.TextColumn("C.N.", disabled=True),
                 "posologia": st.column_config.TextColumn("Posología", disabled=True),
                 "datamatrix": st.column_config.TextColumn("DataMatrix"),
-                "lote": st.column_config.TextColumn("Lote"),
-                "caducidad": st.column_config.TextColumn("Caducidad")
+                "lote": st.column_config.TextColumn("Lote del medicamento"),
+                "caducidad": st.column_config.TextColumn("Caducidad del medicamento")
             }
         )
         shared_data["pedidos_definitivos"] = edited_defs.to_dict(orient="records")
