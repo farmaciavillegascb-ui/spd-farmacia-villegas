@@ -94,7 +94,7 @@ def cargar_datos_excel():
     return pacientes_dict
 
 # ----------------------------------------------------
-# MOTOR AVANZADO DE LECTURA DATAMATRIX (CADENA CONTINUA Y SEPARADORES)
+# MOTOR DE LECTURA DATAMATRIX
 # ----------------------------------------------------
 def traducir_datamatrix(raw_code, bd_medicamentos):
     res = {'marca': '', 'farmaco': '', 'tamano': '', 'cn': '', 'lote': '', 'caducidad': '', 'serie': ''}
@@ -169,9 +169,13 @@ def traducir_datamatrix(raw_code, bd_medicamentos):
     return res
 
 def limpiar_texto_pdf(texto):
+    """Filtro ultraseguro para evitar errores de codificación en FPDF."""
     if not texto: return ""
-    texto_str = str(texto).replace('ñ', 'n').replace('Ñ', 'N').replace('º', '.').replace('ª', '.')
-    return unicodedata.normalize('NFKD', texto_str).encode('ASCII', 'ignore').decode('ASCII')
+    texto_str = str(texto)
+    # Reemplazos preventivos
+    texto_str = texto_str.replace('ñ', 'n').replace('Ñ', 'N').replace('º', '.').replace('ª', '.').replace('—', '-')
+    texto_limpio = unicodedata.normalize('NFKD', texto_str).encode('ascii', 'ignore').decode('ascii')
+    return texto_limpio
 
 def generar_albaran_devolucion_pdf(nombre_paciente, ref_paciente, lista_devolucion):
     pdf = FPDF(orientation='L') 
@@ -184,7 +188,7 @@ def generar_albaran_devolucion_pdf(nombre_paciente, ref_paciente, lista_devoluci
     
     pdf.set_font("Arial", 'B', 9)
     col_widths = [55, 65, 20, 35, 25, 30, 25] 
-    headers = ["Medicamento", "Descripción", "CN", "Lote", "Caducidad", "Serie", "Restantes"]
+    headers = ["Medicamento", "Descripcion", "CN", "Lote", "Caducidad", "Serie", "Restantes"]
     for i in range(len(headers)):
         pdf.cell(col_widths[i], 8, limpiar_texto_pdf(headers[i]), border=1, align='C')
     pdf.ln()
@@ -373,20 +377,18 @@ if st.session_state["pagina"] == "inicio":
                 if st.button("📦 **SELECCIÓN DE ENFERMERÍA**", use_container_width=True): st.session_state["pagina"] = "seleccion_productos_enfermera"; st.rerun()
 
 # ----------------------------------------------------
-# NUEVO MÓDULO DE BAJA DE PACIENTE Y DEVOLUCIÓN
+# MÓDULO DE BAJA DE PACIENTE Y DEVOLUCIÓN
 # ----------------------------------------------------
 elif st.session_state["pagina"] == "baja_paciente":
     if not tiene_permiso(rol_actual, "bajas"): st.error("Sin permiso."); st.stop()
         
     st.markdown("<h2 style='text-align: center; color: #1e293b; font-weight: 800;'>👴 GESTIÓN DE BAJAS DE PACIENTES</h2>", unsafe_allow_html=True)
     
-    # Estados internos para las sub-pantallas de bajas
-    if "baja_modo" not in st.session_state: st.session_state["baja_modo"] = "menu_principal" # menu_principal, opciones_paciente, devolucion
+    if "baja_modo" not in st.session_state: st.session_state["baja_modo"] = "menu_principal"
     if "paciente_baja_obj" not in st.session_state: st.session_state["paciente_baja_obj"] = None
     if "df_devolucion" not in st.session_state: 
         st.session_state["df_devolucion"] = pd.DataFrame(columns=['Medicamento', 'Descripción', 'CN', 'Lote', 'Caducidad', 'Serie', 'Pastillas restantes'])
 
-    # 1. PANTALLA PRINCIPAL: Buscador + Solicitudes de Baja de la Residencia
     if st.session_state["baja_modo"] == "menu_principal":
         col_busqueda, col_solicitudes = st.columns(2, gap="large")
         
@@ -407,7 +409,6 @@ elif st.session_state["pagina"] == "baja_paciente":
                 for idx, sol in enumerate(shared_data["solicitudes_baja"]):
                     st.warning(f"**{sol['nombre']}** (Ref: {sol['ref']})\nMotivo: {sol['motivo']}")
                     if st.button(f"Atender Solicitud {sol['ref']}", key=f"btn_sol_{idx}", use_container_width=True):
-                        # Buscar etiqueta exacta en lista_pacientes
                         etiqueta_hallada = None
                         for pk, pdata in shared_data["lista_pacientes"].items():
                             if pdata["ref"] == sol["ref"]:
@@ -424,7 +425,6 @@ elif st.session_state["pagina"] == "baja_paciente":
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("⬅ Volver al Menú Principal"): st.session_state["pagina"] = "inicio"; st.rerun()
 
-    # 2. PANTALLA DE OPCIONES PARA EL PACIENTE SELECCIONADO
     elif st.session_state["baja_modo"] == "opciones_paciente":
         pac = st.session_state["paciente_baja_obj"]
         st.info(f"👤 Paciente seleccionado: **{pac['nombre']}** (Ref: {pac['ref']})")
@@ -435,7 +435,6 @@ elif st.session_state["pagina"] == "baja_paciente":
             if st.button("🟢 Confirmar Baja", use_container_width=True):
                 if pac["etiqueta"] in shared_data["lista_pacientes"]:
                     del shared_data["lista_pacientes"][pac["etiqueta"]]
-                # Remover de solicitudes de baja si existía
                 shared_data["solicitudes_baja"] = [s for s in shared_data["solicitudes_baja"] if s["ref"] != pac["ref"]]
                 st.success("¡Baja confirmada con éxito!")
                 st.session_state["baja_modo"] = "menu_principal"
@@ -449,7 +448,6 @@ elif st.session_state["pagina"] == "baja_paciente":
                 st.session_state["baja_modo"] = "menu_principal"
                 st.rerun()
 
-    # 3. PANTALLA DE ESCANEO Y DEVOLUCIÓN
     elif st.session_state["baja_modo"] == "devolucion":
         pac = st.session_state["paciente_baja_obj"]
         st.info(f"📦 Registrando devolución y baja para: **{pac['nombre']}** (Ref: {pac['ref']})")
@@ -502,7 +500,7 @@ elif st.session_state["pagina"] == "baja_paciente":
             st.rerun()
 
 # ----------------------------------------------------
-# RESTO DE MÓDULOS DEL SISTEMA
+# RESTO DE MÓDULOS
 # ----------------------------------------------------
 elif st.session_state["pagina"] == "alta_paciente":
     if not tiene_permiso(rol_actual, "altas"): st.error("No tienes permiso."); st.stop()
