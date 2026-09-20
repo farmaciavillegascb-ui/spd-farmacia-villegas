@@ -209,36 +209,49 @@ def traducir_datamatrix(raw_code):
         
     return res
 
+def limpiar_texto_pdf(texto):
+    """Limpia tildes y caracteres especiales para evitar errores de codificación en FPDF."""
+    if not texto:
+        return ""
+    reemplazos = {
+        'á': 'a', 'é': 'e', 'í': 'i', 'ó': 'o', 'ú': 'u',
+        'Á': 'A', 'É': 'E', 'Í': 'I', 'Ó': 'O', 'Ú': 'U',
+        'ñ': 'n', 'Ñ': 'N', 'º': 'o', 'ª': 'a'
+    }
+    for k, v in reemplazos.items():
+        texto = str(texto).replace(k, v)
+    return texto.encode('latin-1', 'replace').decode('latin-1')
+
 def generar_albaran_pdf(lista_pedidos):
     pdf = FPDF(orientation='L') 
     pdf.add_page()
     pdf.set_font("Arial", 'B', 14)
-    pdf.cell(0, 10, "FARMACIA VILLEGAS C.B.", ln=True, align='C')
+    pdf.cell(0, 10, limpiar_texto_pdf("FARMACIA VILLEGAS C.B."), ln=True, align='C')
     pdf.set_font("Arial", '', 11)
-    pdf.cell(0, 6, "C/ INDEPENDENCIA, 5 — TOMELLOSO", ln=True, align='C')
+    pdf.cell(0, 6, limpiar_texto_pdf("C/ INDEPENDENCIA, 5 — TOMELLOSO"), ln=True, align='C')
     pdf.ln(10)
     pdf.set_font("Arial", 'B', 12)
     fecha_actual = datetime.now().strftime("%d/%m/%Y %H:%M")
-    pdf.cell(0, 10, f"ALBARÁN DE ENTREGA - Fecha: {fecha_actual}", ln=True, align='L')
+    pdf.cell(0, 10, limpiar_texto_pdf(f"ALBARÁN DE ENTREGA - Fecha: {fecha_actual}"), ln=True, align='L')
     pdf.ln(5)
     
     pdf.set_font("Arial", 'B', 9)
     col_widths = [15, 55, 65, 20, 20, 45, 25, 25] 
     headers = ["Ref.", "Paciente", "Medicamento", "C.N.", "Posología", "DataMatrix", "Lote", "Caducidad"]
     for i in range(len(headers)):
-        pdf.cell(col_widths[i], 8, headers[i], border=1, align='C')
+        pdf.cell(col_widths[i], 8, limpiar_texto_pdf(headers[i]), border=1, align='C')
     pdf.ln()
     
     pdf.set_font("Arial", '', 8)
     for row in lista_pedidos:
-        pdf.cell(col_widths[0], 8, str(row.get('ref', ''))[:8], border=1)
-        pdf.cell(col_widths[1], 8, str(row.get('paciente', ''))[:35], border=1)
-        pdf.cell(col_widths[2], 8, str(row.get('medicamento', ''))[:45], border=1)
-        pdf.cell(col_widths[3], 8, str(row.get('cn', ''))[:10], border=1, align='C')
-        pdf.cell(col_widths[4], 8, str(row.get('posologia', ''))[:12], border=1, align='C')
-        pdf.cell(col_widths[5], 8, str(row.get('datamatrix', ''))[:35], border=1)
-        pdf.cell(col_widths[6], 8, str(row.get('lote', ''))[:15], border=1, align='C')
-        pdf.cell(col_widths[7], 8, str(row.get('caducidad', ''))[:12], border=1, align='C')
+        pdf.cell(col_widths[0], 8, limpiar_texto_pdf(str(row.get('ref', ''))[:8]), border=1)
+        pdf.cell(col_widths[1], 8, limpiar_texto_pdf(str(row.get('paciente', ''))[:35]), border=1)
+        pdf.cell(col_widths[2], 8, limpiar_texto_pdf(str(row.get('medicamento', ''))[:45]), border=1)
+        pdf.cell(col_widths[3], 8, limpiar_texto_pdf(str(row.get('cn', ''))[:10]), border=1, align='C')
+        pdf.cell(col_widths[4], 8, limpiar_texto_pdf(str(row.get('posologia', ''))[:12]), border=1, align='C')
+        pdf.cell(col_widths[5], 8, limpiar_texto_pdf(str(row.get('datamatrix', ''))[:35]), border=1)
+        pdf.cell(col_widths[6], 8, limpiar_texto_pdf(str(row.get('lote', ''))[:15]), border=1, align='C')
+        pdf.cell(col_widths[7], 8, limpiar_texto_pdf(str(row.get('caducidad', ''))[:12]), border=1, align='C')
         pdf.ln()
     return pdf.output(dest='S').encode('latin1')
 
@@ -246,28 +259,28 @@ def generar_albaran_devolucion_pdf(nombre_paciente, ref_paciente, lista_devoluci
     pdf = FPDF(orientation='L') 
     pdf.add_page()
     pdf.set_font("Arial", 'B', 14)
-    pdf.cell(0, 10, "FARMACIA VILLEGAS C.B. - ALBARÁN DE DEVOLUCIÓN", ln=True, align='C')
+    pdf.cell(0, 10, limpiar_texto_pdf("FARMACIA VILLEGAS C.B. - ALBARÁN DE DEVOLUCIÓN"), ln=True, align='C')
     pdf.set_font("Arial", '', 11)
-    pdf.cell(0, 6, f"Paciente: {nombre_paciente} (Ref: {ref_paciente})", ln=True, align='L')
+    pdf.cell(0, 6, limpiar_texto_pdf(f"Paciente: {nombre_paciente} (Ref: {ref_paciente})"), ln=True, align='L')
     pdf.ln(5)
     
     pdf.set_font("Arial", 'B', 9)
     col_widths = [35, 55, 25, 25, 20, 25, 20, 25] 
     headers = ["Marca", "Fármaco", "Dosificación", "Tamaño", "CN", "Lote", "Caducidad", "Restantes"]
     for i in range(len(headers)):
-        pdf.cell(col_widths[i], 8, headers[i], border=1, align='C')
+        pdf.cell(col_widths[i], 8, limpiar_texto_pdf(headers[i]), border=1, align='C')
     pdf.ln()
     
     pdf.set_font("Arial", '', 8)
     for row in lista_devolucion:
-        pdf.cell(col_widths[0], 8, str(row.get('Marca', ''))[:20], border=1)
-        pdf.cell(col_widths[1], 8, str(row.get('Fármaco', ''))[:30], border=1)
-        pdf.cell(col_widths[2], 8, str(row.get('Dosificación', ''))[:15], border=1, align='C')
-        pdf.cell(col_widths[3], 8, str(row.get('Tamaño envase', ''))[:15], border=1, align='C')
-        pdf.cell(col_widths[4], 8, str(row.get('CN', ''))[:10], border=1, align='C')
-        pdf.cell(col_widths[5], 8, str(row.get('Lote', ''))[:12], border=1, align='C')
-        pdf.cell(col_widths[6], 8, str(row.get('Caducidad', ''))[:10], border=1, align='C')
-        pdf.cell(col_widths[7], 8, str(row.get('Pastillas restantes', '0'))[:8], border=1, align='C')
+        pdf.cell(col_widths[0], 8, limpiar_texto_pdf(str(row.get('Marca', ''))[:20]), border=1)
+        pdf.cell(col_widths[1], 8, limpiar_texto_pdf(str(row.get('Fármaco', ''))[:30]), border=1)
+        pdf.cell(col_widths[2], 8, limpiar_texto_pdf(str(row.get('Dosificación', ''))[:15]), border=1, align='C')
+        pdf.cell(col_widths[3], 8, limpiar_texto_pdf(str(row.get('Tamaño envase', ''))[:15]), border=1, align='C')
+        pdf.cell(col_widths[4], 8, limpiar_texto_pdf(str(row.get('CN', ''))[:10]), border=1, align='C')
+        pdf.cell(col_widths[5], 8, limpiar_texto_pdf(str(row.get('Lote', ''))[:12]), border=1, align='C')
+        pdf.cell(col_widths[6], 8, limpiar_texto_pdf(str(row.get('Caducidad', ''))[:10]), border=1, align='C')
+        pdf.cell(col_widths[7], 8, limpiar_texto_pdf(str(row.get('Pastillas restantes', '0'))[:8]), border=1, align='C')
         pdf.ln()
     return pdf.output(dest='S').encode('latin1')
 
@@ -625,7 +638,7 @@ elif st.session_state["pagina"] == "alta_paciente":
     if st.button("⬅ Volver"): st.session_state["pagina"] = "inicio"; st.rerun()
 
 # ----------------------------------------------------
-# BAJAS DE PACIENTE Y DEVOLUCIÓN CON RELLENADO DE CASILLAS
+# BAJAS DE PACIENTE Y DEVOLUCIÓN
 # ----------------------------------------------------
 elif st.session_state["pagina"] == "baja_paciente":
     if not tiene_permiso(rol_actual, "bajas"): st.error("Sin permiso."); st.stop()
@@ -669,11 +682,7 @@ elif st.session_state["pagina"] == "baja_paciente":
         pac_obj = st.session_state["paciente_a_baja_obj"]
         st.info(f"📦 Paciente en baja: **{pac_obj['nombre']}** (Ref: {pac_obj['ref']})")
         
-        # Casilla dedicada para leer el DataMatrix y recargar la página con los datos traducidos
-        def trigger_traduccion_baja():
-            pass
-
-        cadena_dm = st.text_input("📥 Escanee o introduzca el código DataMatrix en esta casilla:", key="input_dm_baja", on_change=trigger_traduccion_baja)
+        cadena_dm = st.text_input("📥 Escanee o introduzca el código DataMatrix en esta casilla:", key="input_dm_baja")
         parsed = traducir_datamatrix(cadena_dm)
 
         st.markdown("##### 📝 Ficha del Medicamento (Rellenada Automáticamente)")
@@ -770,7 +779,7 @@ elif st.session_state["pagina"] == "solicitud_pedido_admin":
     else: st.info("Vacío.")
     if st.button("⬅ Volver"): st.session_state["pagina"] = "inicio"; st.rerun()
 
-# PEDIDOS DEFINITIVOS CON RELLENADO DE CASILLAS
+# PEDIDOS DEFINITIVOS
 elif st.session_state["pagina"] == "pedidos_definitivos_admin":
     if not tiene_permiso(rol_actual, "pedidos_def"): st.error("Sin permiso."); st.stop()
         
