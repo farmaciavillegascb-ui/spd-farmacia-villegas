@@ -49,7 +49,7 @@ def cargar_base_medicamentos():
     try:
         df_bd = pd.read_excel(ruta_bd, sheet_name=0, usecols=['Cod. Nacional', 'Laboratorio', 'Presentación'])
         df_bd = df_bd.dropna(subset=['Cod. Nacional'])
-        df_bd['CN'] = df_bd['Cod. Nacional'].astype(str).str.replace(r'\.0$', '', regex=True)
+        df_bd['CN'] = df_bd['Cod. Nacional'].astype(str).str.replace(r'\.0$', '', regex=True).str.zfill(6)
         
         partes = df_bd['Presentación'].astype(str).str.split(',', n=1, expand=True)
         df_bd['farmaco'] = partes[0].fillna('').astype(str).str.strip().str.slice(0, 45)
@@ -95,22 +95,19 @@ def cargar_datos_excel():
     return pacientes_dict
 
 def traducir_datamatrix(raw_code, bd_medicamentos):
-    res = {'marca': '', 'farmaco': '', 'dosificacion': '', 'tamano': '', 'cn': '', 'lote': '', 'caducidad': ''}
+    res = {'marca': '', 'farmaco': '', 'tamano': '', 'cn': '', 'lote': '', 'caducidad': ''}
     if not raw_code: return res
     
     clean = str(raw_code).replace('\x1D', '').replace('(', '').replace(')', '').replace(']', '').strip()
     
     try:
-        if '01' in clean:
-            idx = clean.find('01')
-            if len(clean) >= idx + 16:
-                gtin = clean[idx+2 : idx+16]
-                if len(gtin) == 14: res['cn'] = gtin[7:13]
-        elif len(clean) >= 6 and clean[:6].isdigit():
-            res['cn'] = clean[:6]
+        # Extracción de CN utilizando los últimos 6 dígitos de la cadena escaneada
+        if len(clean) >= 6:
+            res['cn'] = clean[-6:].strip()
         else:
-            res['cn'] = clean[:6] if len(clean) >= 6 else "123456"
+            res['cn'] = clean.zfill(6)
 
+        # Extracción de Caducidad (AI 17)
         if '17' in clean:
             idx = clean.find('17')
             if len(clean) >= idx + 8:
@@ -118,9 +115,10 @@ def traducir_datamatrix(raw_code, bd_medicamentos):
                 if len(cad_raw) == 6:
                     yy, mm, dd = cad_raw[0:2], cad_raw[2:4], cad_raw[4:6]
                     if dd == '00': dd = '01'
-                    res['caducidad'] = f"{dd}/{mm}/20{yy}"
-        if not res['caducidad']: res['caducidad'] = "31/12/2028"
+                    res['caducidad'] = f"{mm}/20{yy}"
+        if not res['caducidad']: res['caducidad'] = "12/2028"
 
+        # Extracción de Lote (AI 10)
         if '10' in clean:
             idx = clean.find('10')
             lote_val = clean[idx+2:]
@@ -128,19 +126,21 @@ def traducir_datamatrix(raw_code, bd_medicamentos):
                 if ai in lote_val:
                     lote_val = lote_val.split(ai)[0]
             res['lote'] = lote_val[:20].strip()
-        if not res['lote']: res['lote'] = "LOTE01"
+        if not res['lote']: res['lote'] = "L001"
     except Exception:
-        res['cn'] = clean[:6] if len(clean)>=6 else "123456"
-        res['lote'] = "LOTE01"
-        res['caducidad'] = "31/12/2028"
+        res['cn'] = clean[-6:] if len(clean)>=6 else "000000"
+        res['lote'] = "L001"
+        res['caducidad'] = "12/2028"
         
-    if res['cn'] in bd_medicamentos:
-        datos = bd_medicamentos[res['cn']]
+    # Búsqueda exacta en la Base de Datos con los últimos 6 dígitos
+    cn_busqueda = res['cn'].zfill(6)
+    if cn_busqueda in bd_medicamentos:
+        datos = bd_medicamentos[cn_busqueda]
         res['marca'] = str(datos.get('marca', ''))
         res['farmaco'] = str(datos.get('farmaco', ''))
         res['tamano'] = str(datos.get('tamano', ''))
     else:
-        res['farmaco'] = f"Desconocido (CN: {res['cn']})"
+        res['farmaco'] = f"Medicamento (CN: {res['cn']})"
         
     return res
 
@@ -194,7 +194,7 @@ def generar_albaran_devolucion_pdf(nombre_paciente, ref_paciente, lista_devoluci
     
     pdf.set_font("Arial", 'B', 9)
     col_widths = [65, 75, 20, 40, 30, 40] 
-    headers = ["Medicamento", "Descripción", "CN", "Lote", "Caducidad", "Restantes"]
+    headers = ["Medicamento", "Descripcion", "CN", "Lote", "Caducidad", "Restantes"]
     for i in range(len(headers)):
         pdf.cell(col_widths[i], 8, limpiar_texto_pdf(headers[i]), border=1, align='C')
     pdf.ln()
@@ -406,8 +406,7 @@ elif st.session_state["pagina"] == "baja_paciente":
         
         st.markdown("##### 📷 Lector de Código DataMatrix (Devoluciones)")
         
-        # AQUÍ ESTÁ EL CAMBIO: El bloque de las 8 casillas ha desaparecido para siempre.
-        # Solo hay UNA casilla para la pistola DataMatrix.
+        # Única casilla para el escaneo del DataMatrix
         with st.form("form_escanear_dm", clear_on_submit=True):
             cadena_dm = st.text_input("Escanee o introduzca la cadena del código DataMatrix del envase:")
             submit_scan = st.form_submit_button("Añadir a la Lista (o presione Enter al escanear)", use_container_width=True)
@@ -423,12 +422,11 @@ elif st.session_state["pagina"] == "baja_paciente":
                     'Pastillas restantes': 0
                 }
                 st.session_state["df_devolucion"] = pd.concat([st.session_state["df_devolucion"], pd.DataFrame([nuevo_reg])], ignore_index=True)
-                st.success(f"✅ ¡{parsed['farmaco']} añadido! Indique el número de pastillas en la tabla inferior.")
+                st.success(f"✅ ¡{parsed['farmaco']} añadido correctamente!")
         
         if not st.session_state["df_devolucion"].empty:
             st.markdown("##### 📋 Listado de Devolución (Edite las pastillas directamente en la tabla)")
             
-            # Tabla de edición rápida
             st.session_state["df_devolucion"] = st.data_editor(
                 st.session_state["df_devolucion"], 
                 use_container_width=True, 
@@ -458,7 +456,7 @@ elif st.session_state["pagina"] == "baja_paciente":
         st.session_state["pagina"] = "inicio"; st.rerun()
 
 # ----------------------------------------------------
-# OTROS MÓDULOS DE LA APLICACIÓN (MANTENIDOS PARA QUE NO SE ROMPA NADA)
+# OTROS MÓDULOS
 # ----------------------------------------------------
 elif st.session_state["pagina"] == "alta_paciente":
     if not tiene_permiso(rol_actual, "altas"): st.error("No tienes permiso."); st.stop()
