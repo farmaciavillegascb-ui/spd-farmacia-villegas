@@ -173,6 +173,53 @@ def cargar_datos_excel():
             
     return pacientes_dict
 
+def parsear_datamatrix(dm):
+    """Analiza de forma segura un código DataMatrix GS1 para extraer CN, Lote y Caducidad."""
+    resultado = {
+        'marca': 'Marca Genérica',
+        'farmaco': 'Medicamento',
+        'dosificacion': '100mg',
+        'tamano': '28 comp',
+        'cn': '',
+        'lote': '',
+        'caducidad': ''
+    }
+    if not dm:
+        return resultado
+    
+    limpio = str(dm).replace('\x1D', '').replace('(', '').replace(')', '').strip()
+    
+    try:
+        if '01' in limpio:
+            idx = limpio.find('01')
+            if len(limpio) >= idx + 16:
+                gtin = limpio[idx+2 : idx+16]
+                if len(gtin) == 14:
+                    resultado['cn'] = gtin[7:13]
+                    resultado['farmaco'] = f"Fármaco CN {resultado['cn']}"
+        
+        if '17' in limpio:
+            idx = limpio.find('17')
+            if len(limpio) >= idx + 8:
+                cad = limpio[idx+2 : idx+8]
+                if len(cad) == 6:
+                    yy, mm, dd = cad[0:2], cad[2:4], cad[4:6]
+                    if dd == '00': dd = '01'
+                    resultado['caducidad'] = f"{dd}/{mm}/20{yy}"
+        
+        if '10' in limpio:
+            idx = limpio.find('10')
+            lote_val = limpio[idx+2:]
+            for ai in ['21', '17', '30', '11']:
+                if ai in lote_val:
+                    lote_val = lote_val.split(ai)[0]
+            resultado['lote'] = lote_val[:20].strip()
+            
+    except Exception:
+        pass
+        
+    return resultado
+
 def generar_albaran_pdf(lista_pedidos):
     pdf = FPDF(orientation='L') 
     pdf.add_page()
@@ -753,7 +800,7 @@ elif st.session_state["pagina"] == "alta_paciente":
         st.rerun()
 
 # ----------------------------------------------------
-# BAJAS DE PACIENTE Y DEVOLUCIÓN DE MEDICACIÓN CON PDF
+# BAJAS DE PACIENTE Y DEVOLUCIÓN AUTOMATIZADA CON DATAMATRIX
 # ----------------------------------------------------
 elif st.session_state["pagina"] == "baja_paciente":
     if not tiene_permiso(rol_actual, "bajas"):
@@ -771,6 +818,8 @@ elif st.session_state["pagina"] == "baja_paciente":
         st.session_state["df_devolucion"] = pd.DataFrame(columns=[
             'Marca', 'Fármaco', 'Dosificación', 'Tamaño envase', 'CN', 'Lote', 'Caducidad', 'Pastillas restantes'
         ])
+    if "dm_input_val" not in st.session_state:
+        st.session_state["dm_input_val"] = ""
 
     if es_admin_rol and shared_data["solicitudes_baja"]:
         st.warning("⚠️ Tienes solicitudes de baja pendientes de Enfermería:")
@@ -825,44 +874,64 @@ elif st.session_state["pagina"] == "baja_paciente":
         pac_obj = st.session_state["paciente_a_baja_obj"]
         st.info(f"📦 Registrando devolución de medicación para: **{pac_obj['nombre']}** (Ref: {pac_obj['ref']})")
         
-        with st.form("form_escanear_datamatrix"):
-            st.markdown("##### 📷 Lector de Código DataMatrix (Devoluciones)")
-            datamatrix_input = st.text_input("Escanee o introduzca la cadena del código DataMatrix del envase:")
-            
+        # Callback para autocompletar instantáneamente al teclear/escanear DataMatrix
+        def actualizar_campos_dm():
+            val = st.session_state.get("widget_dm_baja", "")
+            parsed = parsear_datamatrix(val)
+            st.session_state["baja_marca"] = parsed['marca']
+            st.session_state["baja_farmaco"] = parsed['farmaco']
+            st.session_state["baja_dosificacion"] = parsed['dosificacion']
+            st.session_state["baja_tamano"] = parsed['tamano']
+            st.session_state["baja_cn"] = parsed['cn']
+            st.session_state["baja_lote"] = parsed['lote']
+            st.session_state["baja_caducidad"] = parsed['caducidad']
+
+        st.markdown("##### 📷 Lector de Código DataMatrix (Autocompletado Automático)")
+        st.text_input(
+            "Escanee el código DataMatrix completo o introduzca la cadena GS1:",
+            key="widget_dm_baja",
+            on_change=actualizar_campos_dm
+        )
+        
+        # Inicializar estados si no existen
+        for k, v in [("baja_marca",""), ("baja_farmaco",""), ("baja_dosificacion",""), ("baja_tamano",""), ("baja_cn",""), ("baja_lote",""), ("baja_caducidad","")]:
+            if k not in st.session_state: st.session_state[k] = v
+
+        with st.form("form_escanear_datamatrix_baja"):
             c_m1, c_m2, c_m3 = st.columns(3)
             with c_m1:
-                marca_manual = st.text_input("Marca:")
+                m_val = st.text_input("Marca:", value=st.session_state["baja_marca"])
             with c_m2:
-                farmaco_manual = st.text_input("Nombre del fármaco:")
+                f_val = st.text_input("Nombre del fármaco:", value=st.session_state["baja_farmaco"])
             with c_m3:
-                dosificacion_manual = st.text_input("Dosificación:")
+                d_val = st.text_input("Dosificación:", value=st.session_state["baja_dosificacion"])
                 
             c_m4, c_m5, c_m6, c_m7 = st.columns(4)
             with c_m4:
-                tamano_manual = st.text_input("Tamaño envase:")
+                t_val = st.text_input("Tamaño envase:", value=st.session_state["baja_tamano"])
             with c_m5:
-                cn_manual = st.text_input("CN (Código Nacional):")
+                cn_val = st.text_input("CN (Código Nacional):", value=st.session_state["baja_cn"])
             with c_m6:
-                lote_manual = st.text_input("Número de Lote:")
+                l_val = st.text_input("Número de Lote:", value=st.session_state["baja_lote"])
             with c_m7:
-                caducidad_manual = st.text_input("Fecha Caducidad:")
+                cad_val = st.text_input("Fecha Caducidad:", value=st.session_state["baja_caducidad"])
                 
-            pastillas_manual = st.number_input("Número de pastillas restantes:", min_value=0, value=0, step=1)
+            pastillas_input = st.number_input("Número de pastillas restantes:", min_value=0, value=0, step=1)
             
             btn_anadir_dev = st.form_submit_button("➕ Añadir a la Lista de Devolución")
             if btn_anadir_dev:
                 nuevo_reg = {
-                    'Marca': marca_manual.strip() if marca_manual else "Genérico",
-                    'Fármaco': farmaco_manual.strip() if farmaco_manual else (datamatrix_input[:15] if datamatrix_input else "Medicamento"),
-                    'Dosificación': dosificacion_manual.strip() if dosificacion_manual else "100mg",
-                    'Tamaño envase': tamano_manual.strip() if tamano_manual else "28 comp",
-                    'CN': cn_manual.strip() if cn_manual else (datamatrix_input[5:11] if len(datamatrix_input)>=11 else "123456"),
-                    'Lote': lote_manual.strip() if lote_manual else "L001",
-                    'Caducidad': caducidad_manual.strip() if caducidad_manual else "12/2028",
-                    'Pastillas restantes': int(pastillas_manual)
+                    'Marca': m_val.strip(),
+                    'Fármaco': f_val.strip(),
+                    'Dosificación': d_val.strip(),
+                    'Tamaño envase': t_val.strip(),
+                    'CN': cn_val.strip(),
+                    'Lote': l_val.strip(),
+                    'Caducidad': cad_val.strip(),
+                    'Pastillas restantes': int(pastillas_input)
                 }
                 st.session_state["df_devolucion"] = pd.concat([st.session_state["df_devolucion"], pd.DataFrame([nuevo_reg])], ignore_index=True)
-                st.success("¡Medicamento añadido a la devolución!")
+                st.success("¡Medicamento decodificado y añadido a la devolución correctamente!")
 
         if not st.session_state["df_devolucion"].empty:
             st.markdown("##### 📋 Listado de Medicación a Devolver")
@@ -1242,15 +1311,48 @@ elif st.session_state["pagina"] == "solicitud_pedido_admin":
         st.session_state["pagina"] = "inicio"
         st.rerun()
 
+# ----------------------------------------------------
+# PEDIDOS DEFINITIVOS CON ESCÁNER RÁPIDO DATAMATRIX
+# ----------------------------------------------------
 elif st.session_state["pagina"] == "pedidos_definitivos_admin":
     if not tiene_permiso(rol_actual, "pedidos_def"):
         st.error("No tienes permiso para acceder a este módulo.")
         st.stop()
         
-    st.markdown("<h2 style='text-align: center; color: #1e293b; font-weight: 800;'>🛒 PEDIDOS DEFINITIVOS (Recibidos de Enfermería)</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center; color: #1e293b; font-weight: 800;'>🛒 PEDIDOS DEFINITIVOS Y ESCÁNER</h2>", unsafe_allow_html=True)
     if not shared_data["pedidos_definitivos"]:
         st.info("No hay pedidos definitivos en este momento.")
     else:
+        # Escáner Rápido DataMatrix para autocompletar la tabla de pedidos
+        def procesar_escaner_pedido():
+            val = st.session_state.get("quick_dm_scan", "")
+            if val:
+                parsed = parsear_datamatrix(val)
+                # Buscar el primer pedido definitivo sin DataMatrix registrado o coincidente por CN
+                encontrado = False
+                for item in shared_data["pedidos_definitivos"]:
+                    if not item.get("datamatrix"):
+                        # Si coincide el CN o si está libre, lo rellenamos automáticamente
+                        if not item.get("cn") or str(item.get("cn")) == str(parsed['cn']):
+                            item["datamatrix"] = val
+                            item["lote"] = parsed['lote'] if parsed['lote'] else "L001"
+                            item["caducidad"] = parsed['caducidad'] if parsed['caducidad'] else "12/2028"
+                            encontrado = True
+                            break
+                if not encontrado and shared_data["pedidos_definitivos"]:
+                    # Rellenar al menos la primera línea disponible
+                    shared_data["pedidos_definitivos"][0]["datamatrix"] = val
+                    if parsed['lote']: shared_data["pedidos_definitivos"][0]["lote"] = parsed['lote']
+                    if parsed['caducidad']: shared_data["pedidos_definitivos"][0]["caducidad"] = parsed['caducidad']
+                st.session_state["quick_dm_scan"] = ""
+
+        st.markdown("##### ⚡ Escáner Rápido de DataMatrix para Pedidos")
+        st.text_input(
+            "Escanee aquí el código DataMatrix del medicamento para autocompletar la siguiente línea:",
+            key="quick_dm_scan",
+            on_change=procesar_escaner_pedido
+        )
+
         df_defs = pd.DataFrame(shared_data["pedidos_definitivos"])
         edited_defs = st.data_editor(
             df_defs, use_container_width=True, hide_index=True,
@@ -1260,7 +1362,7 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
                 "medicamento": st.column_config.TextColumn("Medicamento", disabled=True),
                 "cn": st.column_config.TextColumn("C.N.", disabled=True),
                 "posologia": st.column_config.TextColumn("Posología", disabled=True),
-                "datamatrix": st.column_config.TextColumn("DataMatrix (Escanear)"),
+                "datamatrix": st.column_config.TextColumn("DataMatrix"),
                 "lote": st.column_config.TextColumn("Lote"),
                 "caducidad": st.column_config.TextColumn("Caducidad")
             }
@@ -1299,6 +1401,73 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
 
     if st.button("⬅ Volver al Menú Principal"):
         st.session_state["pagina"] = "inicio"
+        st.rerun()
+
+elif st.session_state["pagina"] == "incidencias":
+    if not tiene_permiso(rol_actual, "incidencias"):
+        st.error("No tienes permiso para acceder a este módulo.")
+        st.stop()
+        
+    st.markdown("<h2 style='text-align: center; color: #1e293b; font-weight: 800;'>⚠️ PANEL DE INCIDENCIAS GLOBAL</h2>", unsafe_allow_html=True)
+    st.markdown("---")
+    
+    if not shared_data["incidencias_activas"]:
+        st.info("No hay incidencias activas reportadas en este momento.")
+    else:
+        df_inc = pd.DataFrame(shared_data["incidencias_activas"])
+        
+        if rol_actual == "admin":
+            st.markdown("Edite el **Tipo de incidencia** u **Observaciones**. Para eliminarla, marque la casilla **'Solventar'** y confirme.")
+            
+            opciones_incidencia = [
+                "Falta de receta electrónica",
+                "Modificar posología",
+                "Medicación adelantada",
+                "Lo consume?",
+                "Falta de abastecimiento",
+                "Otra"
+            ]
+            
+            edited_inc = st.data_editor(
+                df_inc,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "paciente": st.column_config.TextColumn("Paciente", disabled=True),
+                    "ref": st.column_config.TextColumn("Ref.", disabled=True),
+                    "medicamento": st.column_config.TextColumn("Medicamento", disabled=True),
+                    "cn": st.column_config.TextColumn("C.N.", disabled=True),
+                    "posologia": st.column_config.TextColumn("Posología", disabled=True),
+                    "tipo_incidencia": st.column_config.SelectboxColumn(
+                        "Tipo Incidencia",
+                        help="Seleccione el motivo de la incidencia",
+                        options=opciones_incidencia,
+                        required=False
+                    ),
+                    "observaciones": st.column_config.TextColumn("Observaciones"),
+                    "resuelta": st.column_config.CheckboxColumn("Solventar (Borrar)")
+                },
+                key="editor_inc_admin"
+            )
+            shared_data["incidencias_activas"] = edited_inc.to_dict(orient="records")
+            
+            if st.button("✅ Confirmar Incidencias Resueltas"):
+                shared_data["incidencias_activas"] = [i for i in shared_data["incidencias_activas"] if not i.get("resuelta", False)]
+                st.success("Listado actualizado. Se han borrado las incidencias resueltas.")
+                time.sleep(1)
+                st.rerun()
+        else:
+            st.markdown("Lista de incidencias reportadas por Farmacia para su conocimiento.")
+            st.dataframe(
+                df_inc[['paciente', 'medicamento', 'tipo_incidencia', 'observaciones']],
+                use_container_width=True,
+                hide_index=True
+            )
+            
+    st.write("")
+    if st.button("⬅ Volver al Menú"):
+        st.session_state["pagina"] = "inicio"
+        st.rerun()
         st.rerun()
 
 elif st.session_state["pagina"] == "incidencias":
