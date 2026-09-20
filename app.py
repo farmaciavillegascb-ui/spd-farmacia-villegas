@@ -151,10 +151,7 @@ def cargar_datos_excel():
     return pacientes_dict
 
 def traducir_datamatrix(raw_code):
-    """
-    Decodificador inteligente GS1 DataMatrix farmacéutico.
-    Traduce la cadena escaneada a: Marca, Fármaco, Dosificación, Tamaño, CN, Lote y Caducidad.
-    """
+    """Decodificador inteligente GS1 DataMatrix farmacéutico."""
     res = {
         'marca': 'Genérico Farmacia',
         'farmaco': 'Medicamento Genérico',
@@ -167,17 +164,15 @@ def traducir_datamatrix(raw_code):
     if not raw_code:
         return res
     
-    # Limpiar caracteres de control habituales en pistolas de código de barras
     clean = str(raw_code).replace('\x1D', '').replace('(', '').replace(')', '').replace(']', '').strip()
     
     try:
-        # 1. Extracción de Código Nacional (CN) mediante identificador AI 01 (GTIN-14)
         if '01' in clean:
             idx = clean.find('01')
             if len(clean) >= idx + 16:
                 gtin = clean[idx+2 : idx+16]
                 if len(gtin) == 14:
-                    res['cn'] = gtin[7:13] # El CN en España ocupa los dígitos del 7 al 12 del GTIN
+                    res['cn'] = gtin[7:13]
                     res['farmaco'] = f"Fármaco CN {res['cn']}"
         elif len(clean) >= 6 and clean[:6].isdigit():
             res['cn'] = clean[:6]
@@ -186,7 +181,6 @@ def traducir_datamatrix(raw_code):
             res['cn'] = clean[:6] if len(clean) >= 6 else "123456"
             res['farmaco'] = clean[:25] if len(clean) > 0 else "Medicamento"
 
-        # 2. Extracción de Fecha de Caducidad mediante identificador AI 17 (AAMMDD)
         if '17' in clean:
             idx = clean.find('17')
             if len(clean) >= idx + 8:
@@ -198,7 +192,6 @@ def traducir_datamatrix(raw_code):
         if not res['caducidad']:
             res['caducidad'] = "31/12/2028"
 
-        # 3. Extracción de Número de Lote mediante identificador AI 10
         if '10' in clean:
             idx = clean.find('10')
             lote_val = clean[idx+2:]
@@ -541,8 +534,7 @@ if st.session_state["pagina"] == "inicio":
                     st.session_state["pagina"] = "seleccion_productos_enfermera"; st.rerun()
 
 elif st.session_state["pagina"] == "alta_paciente":
-    if not tiene_permiso(rol_actual, "altas"):
-        st.error("No tienes permiso."); st.stop()
+    if not tiene_permiso(rol_actual, "altas"): st.error("No tienes permiso."); st.stop()
         
     st.markdown("<h2 style='text-align: center; color: #1e293b; font-weight: 800;'>👴 ALTA DE PACIENTE</h2>", unsafe_allow_html=True)
     es_admin_rol = (rol_actual == "admin")
@@ -632,11 +624,11 @@ elif st.session_state["pagina"] == "alta_paciente":
                 st.error("Introduce el nombre del paciente.")
     if st.button("⬅ Volver"): st.session_state["pagina"] = "inicio"; st.rerun()
 
-# BAJAS DE PACIENTE Y DEVOLUCIÓN TRADUCIDA POR DATAMATRIX
+# BAJAS DE PACIENTE Y DEVOLUCIÓN CON FICHA VISUAL DE MEDICAMENTO
 elif st.session_state["pagina"] == "baja_paciente":
     if not tiene_permiso(rol_actual, "bajas"): st.error("Sin permiso."); st.stop()
         
-    st.markdown("<h2 style='text-align: center; color: #1e293b; font-weight: 800;'>👴 BAJA Y DEVOLUCIÓN DE MEDICACIÓN</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center; color: #1e293b; font-weight: 800;'>👴 BAJA DE PACIENTE Y DEVOLUCIÓN</h2>", unsafe_allow_html=True)
     es_admin_rol = (rol_actual == "admin")
     
     if "devolucion_activa" not in st.session_state: st.session_state["devolucion_activa"] = False
@@ -673,16 +665,35 @@ elif st.session_state["pagina"] == "baja_paciente":
                         st.success("Paciente eliminado."); time.sleep(1); st.rerun()
     else:
         pac_obj = st.session_state["paciente_a_baja_obj"]
-        st.info(f"📦 Paciente: **{pac_obj['nombre']}** (Ref: {pac_obj['ref']})")
+        st.info(f"📦 Paciente en baja: **{pac_obj['nombre']}** (Ref: {pac_obj['ref']})")
         
-        st.markdown("##### 📷 Escáner DataMatrix (Traducción Automática)")
-        cadena_dm = st.text_input("Escanee o pegue aquí el código DataMatrix:", key="input_dm_baja")
+        st.markdown("##### 📷 Escáner de Código DataMatrix")
+        cadena_dm = st.text_input("Escanee o pegue aquí el código DataMatrix del medicamento:", key="input_dm_baja")
         
-        # TRADUCCIÓN INSTANTÁNEA DEL CÓDIGO
+        # TRADUCCIÓN AUTOMÁTICA DEL CÓDIGO
         parsed = traducir_datamatrix(cadena_dm)
 
+        # ----------------------------------------------------
+        # FICHA VISUAL DE MEDICAMENTO DECODIFICADA
+        # ----------------------------------------------------
+        if cadena_dm:
+            st.markdown(f"""
+            <div style="background: #ffffff; padding: 20px; border-radius: 12px; border: 2px solid #0ea5e9; box-shadow: 0 4px 12px rgba(14,165,233,0.1); margin-bottom: 20px;">
+                <h4 style="color: #0369a1; margin-top: 0; border-bottom: 2px solid #bae6fd; padding-bottom: 8px;">💊 Ficha de Medicamento Decodificada</h4>
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; font-size: 14px; color: #334155;">
+                    <div><b>Marca:</b> {parsed['marca']}</div>
+                    <div><b>Fármaco:</b> {parsed['farmaco']}</div>
+                    <div><b>Dosificación:</b> {parsed['dosificacion']}</div>
+                    <div><b>Tamaño envase:</b> {parsed['tamano']}</div>
+                    <div><b>Código Nacional (CN):</b> {parsed['cn']}</div>
+                    <div><b>Lote:</b> {parsed['lote']}</div>
+                    <div><b>Caducidad:</b> {parsed['caducidad']}</div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
         with st.form("form_escanear_datamatrix_baja"):
-            st.markdown("ℹ️ *El sistema ha traducido automáticamente el código en los siguientes campos:*")
+            st.markdown("Verifique o ajuste los datos extraídos e indique las pastillas restantes:")
             c1, c2, c3 = st.columns(3)
             with c1: m_val = st.text_input("Marca:", value=parsed['marca'])
             with c2: f_val = st.text_input("Fármaco:", value=parsed['farmaco'])
@@ -694,30 +705,30 @@ elif st.session_state["pagina"] == "baja_paciente":
             with c6: l_val = st.text_input("Lote:", value=parsed['lote'])
             with c7: cad_val = st.text_input("Caducidad:", value=parsed['caducidad'])
                 
-            pastillas_input = st.number_input("Pastillas restantes:", min_value=0, value=0, step=1)
+            pastillas_input = st.number_input("Pastillas restantes en el envase:", min_value=0, value=0, step=1)
             
-            if st.form_submit_button("➕ Añadir a la Devolución"):
+            if st.form_submit_button("➕ Añadir a la Lista de Devolución"):
                 nuevo_reg = {
                     'Marca': m_val.strip(), 'Fármaco': f_val.strip(), 'Dosificación': d_val.strip(),
                     'Tamaño envase': t_val.strip(), 'CN': cn_val.strip(), 'Lote': l_val.strip(),
                     'Caducidad': cad_val.strip(), 'Pastillas restantes': int(pastillas_input)
                 }
                 st.session_state["df_devolucion"] = pd.concat([st.session_state["df_devolucion"], pd.DataFrame([nuevo_reg])], ignore_index=True)
-                st.success("¡Medicamento traducido y añadido a la lista!")
+                st.success("¡Medicamento añadido a la devolución correctamente!")
 
         if not st.session_state["df_devolucion"].empty:
-            st.markdown("##### 📋 Listado de Devolución")
+            st.markdown("##### 📋 Listado de Devolución Actual")
             st.session_state["df_devolucion"] = st.data_editor(st.session_state["df_devolucion"], use_container_width=True, hide_index=True)
             
             col_pdf, col_fin = st.columns(2)
             with col_pdf:
                 pdf_bytes = generar_albaran_devolucion_pdf(pac_obj['nombre'], pac_obj['ref'], st.session_state["df_devolucion"].to_dict(orient="records"))
-                st.download_button("📄 Imprimir Albarán PDF", data=pdf_bytes, file_name=f"Devolucion_{pac_obj['nombre']}.pdf", mime="application/pdf", use_container_width=True)
+                st.download_button("📄 Imprimir Albarán de Devolución (PDF)", data=pdf_bytes, file_name=f"Devolucion_{pac_obj['nombre']}.pdf", mime="application/pdf", use_container_width=True)
             with col_fin:
-                if st.button("💾 Finalizar Baja Definitiva", use_container_width=True):
+                if st.button("💾 Finalizar y Dar de Baja Definitiva", use_container_width=True):
                     if pac_obj["etiqueta"] in shared_data["lista_pacientes"]:
                         del shared_data["lista_pacientes"][pac_obj["etiqueta"]]
-                    st.success("¡Baja procesada con éxito!")
+                    st.success("¡Paciente dado de baja con éxito!")
                     st.session_state["devolucion_activa"] = False
                     st.session_state["df_devolucion"] = pd.DataFrame(columns=['Marca', 'Fármaco', 'Dosificación', 'Tamaño envase', 'CN', 'Lote', 'Caducidad', 'Pastillas restantes'])
                     time.sleep(1); st.rerun()
@@ -783,7 +794,7 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
     if not shared_data["pedidos_definitivos"]:
         st.info("No hay pedidos definitivos pendientes.")
     else:
-        st.markdown("##### ⚡ Escáner Rápido DataMatrix (Traducción Automática)")
+        st.markdown("##### ⚡ Escáner Rápido DataMatrix")
         cadena_dm_pedido = st.text_input("Escanee el DataMatrix del medicamento:", key="input_dm_pedido")
         
         parsed_ped = traducir_datamatrix(cadena_dm_pedido)
