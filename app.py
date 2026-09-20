@@ -43,7 +43,6 @@ st.markdown("""
 # ----------------------------------------------------
 @st.cache_data
 def cargar_base_medicamentos():
-    """Lee el listado oficial y lo carga en memoria ultrarrápida."""
     ruta_bd = "listado_de_medicamentos.xlsx"
     if not os.path.exists(ruta_bd):
         return {}
@@ -52,7 +51,6 @@ def cargar_base_medicamentos():
         df_bd = df_bd.dropna(subset=['Cod. Nacional'])
         df_bd['CN'] = df_bd['Cod. Nacional'].astype(str).str.replace(r'\.0$', '', regex=True)
         
-        # Separar la Presentación para extraer nombre y tamaño de forma eficiente
         partes = df_bd['Presentación'].astype(str).str.split(',', n=1, expand=True)
         df_bd['farmaco'] = partes[0].fillna('').astype(str).str.strip().str.slice(0, 45)
         if partes.shape[1] > 1:
@@ -97,13 +95,11 @@ def cargar_datos_excel():
     return pacientes_dict
 
 def traducir_datamatrix(raw_code, bd_medicamentos):
-    """Decodificador DataMatrix que consulta el Excel oficial."""
     res = {'marca': '', 'farmaco': '', 'dosificacion': '', 'tamano': '', 'cn': '', 'lote': '', 'caducidad': ''}
     if not raw_code: return res
     
     clean = str(raw_code).replace('\x1D', '').replace('(', '').replace(')', '').replace(']', '').strip()
     
-    # 1. Extracción de CN, Lote y Caducidad del código
     try:
         if '01' in clean:
             idx = clean.find('01')
@@ -138,7 +134,6 @@ def traducir_datamatrix(raw_code, bd_medicamentos):
         res['lote'] = "LOTE01"
         res['caducidad'] = "31/12/2028"
         
-    # 2. Búsqueda en la Base de Datos Oficial
     if res['cn'] in bd_medicamentos:
         datos = bd_medicamentos[res['cn']]
         res['marca'] = str(datos.get('marca', ''))
@@ -150,7 +145,6 @@ def traducir_datamatrix(raw_code, bd_medicamentos):
     return res
 
 def limpiar_texto_pdf(texto):
-    """Filtro extremo para evitar el UnicodeEncodeError al generar el PDF."""
     if not texto: return ""
     texto_str = str(texto).replace('ñ', 'n').replace('Ñ', 'N').replace('º', '.').replace('ª', '.')
     texto_limpio = unicodedata.normalize('NFKD', texto_str).encode('ASCII', 'ignore').decode('ASCII')
@@ -385,7 +379,7 @@ if st.session_state["pagina"] == "inicio":
                 if st.button("📦 **SELECCIÓN DE ENFERMERÍA**", use_container_width=True): st.session_state["pagina"] = "seleccion_productos_enfermera"; st.rerun()
 
 # ----------------------------------------------------
-# MÓDULO DE BAJA DE PACIENTE Y DEVOLUCIÓN REVISADO
+# BAJA DE PACIENTE Y DEVOLUCIÓN
 # ----------------------------------------------------
 elif st.session_state["pagina"] == "baja_paciente":
     if not tiene_permiso(rol_actual, "bajas"): st.error("Sin permiso."); st.stop()
@@ -412,7 +406,8 @@ elif st.session_state["pagina"] == "baja_paciente":
         
         st.markdown("##### 📷 Lector de Código DataMatrix (Devoluciones)")
         
-        # Este formulario solo tiene la casilla de escaneo
+        # AQUÍ ESTÁ EL CAMBIO: El bloque de las 8 casillas ha desaparecido para siempre.
+        # Solo hay UNA casilla para la pistola DataMatrix.
         with st.form("form_escanear_dm", clear_on_submit=True):
             cadena_dm = st.text_input("Escanee o introduzca la cadena del código DataMatrix del envase:")
             submit_scan = st.form_submit_button("Añadir a la Lista (o presione Enter al escanear)", use_container_width=True)
@@ -425,7 +420,7 @@ elif st.session_state["pagina"] == "baja_paciente":
                     'CN': parsed['cn'],
                     'Lote': parsed['lote'],
                     'Caducidad': parsed['caducidad'],
-                    'Pastillas restantes': 0  # Por defecto
+                    'Pastillas restantes': 0
                 }
                 st.session_state["df_devolucion"] = pd.concat([st.session_state["df_devolucion"], pd.DataFrame([nuevo_reg])], ignore_index=True)
                 st.success(f"✅ ¡{parsed['farmaco']} añadido! Indique el número de pastillas en la tabla inferior.")
@@ -433,7 +428,7 @@ elif st.session_state["pagina"] == "baja_paciente":
         if not st.session_state["df_devolucion"].empty:
             st.markdown("##### 📋 Listado de Devolución (Edite las pastillas directamente en la tabla)")
             
-            # Tabla donde TODO está bloqueado excepto 'Pastillas restantes'
+            # Tabla de edición rápida
             st.session_state["df_devolucion"] = st.data_editor(
                 st.session_state["df_devolucion"], 
                 use_container_width=True, 
@@ -462,34 +457,109 @@ elif st.session_state["pagina"] == "baja_paciente":
     if not st.session_state["devolucion_activa"] and st.button("⬅ Volver al Menú Principal"): 
         st.session_state["pagina"] = "inicio"; st.rerun()
 
-# OTROS MÓDULOS (Altas, Usuarios, Pacientes, Pedidos Definitivos, etc)
-elif st.session_state["pagina"] in ["alta_paciente", "gestion_usuarios", "lista_pacientes", "detalle_paciente", "seleccion_productos_enfermera", "solicitud_pedido_admin", "incidencias", "pedidos_definitivos_admin"]:
-    if st.session_state["pagina"] == "pedidos_definitivos_admin":
-        st.markdown("<h2 style='text-align: center; color: #1e293b; font-weight: 800;'>🛒 PEDIDOS DEFINITIVOS Y ESCÁNER</h2>", unsafe_allow_html=True)
-        if not shared_data["pedidos_definitivos"]: st.info("No hay pedidos definitivos pendientes.")
-        else:
-            with st.form("form_pedidos_dm", clear_on_submit=True):
-                cadena_dm_pedido = st.text_input("📥 Escanee el DataMatrix del medicamento:", key="input_dm_pedido")
-                btn_ped = st.form_submit_button("Añadir")
-                if btn_ped and cadena_dm_pedido:
-                    parsed_ped = traducir_datamatrix(cadena_dm_pedido, BD_MEDICAMENTOS)
-                    for item in shared_data["pedidos_definitivos"]:
-                        if not item.get("datamatrix"):
-                            item["datamatrix"] = cadena_dm_pedido
-                            item["lote"] = parsed_ped['lote']
-                            item["caducidad"] = parsed_ped['caducidad']
-                            break
-            df_defs = pd.DataFrame(shared_data["pedidos_definitivos"])
-            shared_data["pedidos_definitivos"] = st.data_editor(df_defs, use_container_width=True, hide_index=True).to_dict(orient="records")
-            col_pdf, col_act = st.columns(2)
-            with col_pdf:
-                pdf_bytes = generar_albaran_pdf(shared_data["pedidos_definitivos"])
-                st.download_button("📄 Imprimir Albarán de Entrega (PDF)", data=pdf_bytes, file_name="Albaran_Entrega.pdf", mime="application/pdf", use_container_width=True)
-            with col_act:
-                if st.button("📌 Actualizar Última Entrega y Limpiar", use_container_width=True):
-                    shared_data["pedidos_definitivos"] = []
-                    st.success("¡Fechas actualizadas!"); time.sleep(1); st.rerun()
-        if st.button("⬅ Volver al Menú"): st.session_state["pagina"] = "inicio"; st.rerun()
+# ----------------------------------------------------
+# OTROS MÓDULOS DE LA APLICACIÓN (MANTENIDOS PARA QUE NO SE ROMPA NADA)
+# ----------------------------------------------------
+elif st.session_state["pagina"] == "alta_paciente":
+    if not tiene_permiso(rol_actual, "altas"): st.error("No tienes permiso."); st.stop()
+    st.markdown("<h2 style='text-align: center; color: #1e293b; font-weight: 800;'>👴 ALTA DE PACIENTE</h2>", unsafe_allow_html=True)
+    if "df_alta_cargado" not in st.session_state:
+        st.session_state["df_alta_cargado"] = pd.DataFrame(columns=['Medicamento', 'CN', 'Posologia', 'Ultima Entrega'])
+    with st.form("form_alta"):
+        nuevo_nombre = st.text_input("Nombre completo:")
+        nuevo_cip = st.text_input("CIP:")
+        nueva_ref = st.text_input("Referencia:", value="NUEVO")
+        meds_editadas = st.data_editor(st.session_state["df_alta_cargado"], num_rows="dynamic", use_container_width=True)
+        if st.form_submit_button("Guardar y Dar de Alta"):
+            if nuevo_nombre.strip():
+                df_final = meds_editadas.copy()
+                df_final['Ultima Entrega'] = ""
+                etiqueta = f"{nueva_ref} — {nuevo_nombre.strip()}"
+                shared_data["lista_pacientes"][etiqueta] = {
+                    "ref": nueva_ref, "nombre": nuevo_nombre.strip(), "cip": nuevo_cip, "hoja": nueva_ref, "datos": df_final
+                }
+                st.success("¡Paciente dado de alta!")
+                st.session_state["df_alta_cargado"] = pd.DataFrame(columns=['Medicamento', 'CN', 'Posologia', 'Ultima Entrega'])
+                time.sleep(1); st.rerun()
+    if st.button("⬅ Volver"): st.session_state["pagina"] = "inicio"; st.rerun()
+
+elif st.session_state["pagina"] == "lista_pacientes":
+    if not tiene_permiso(rol_actual, "pacientes"): st.error("Sin permiso."); st.stop()
+    st.markdown("<h2 style='text-align: center; color: #1e293b; font-weight: 800;'>PACIENTES</h2>", unsafe_allow_html=True)
+    for pk in list(lista_pacientes.keys()):
+        if st.button(pk, key=f"p_{pk}", use_container_width=True):
+            st.session_state["paciente_seleccionado_key"] = pk
+            st.session_state["pagina"] = "detalle_paciente"; st.rerun()
+    if st.button("⬅ Volver"): st.session_state["pagina"] = "inicio"; st.rerun()
+
+elif st.session_state["pagina"] == "detalle_paciente":
+    if not tiene_permiso(rol_actual, "pacientes"): st.error("Sin permiso."); st.stop()
+    pk = st.session_state["paciente_seleccionado_key"]
+    info = lista_pacientes.get(pk)
+    if info:
+        st.markdown(f"<h3 style='text-align: center;'>Paciente: {info['nombre']}</h3>", unsafe_allow_html=True)
+        info["datos"] = st.data_editor(info["datos"], use_container_width=True, hide_index=True)
+    if st.button("⬅ Volver"): st.session_state["pagina"] = "lista_pacientes"; st.rerun()
+
+elif st.session_state["pagina"] == "seleccion_productos_enfermera":
+    if not tiene_permiso(rol_actual, "propuesta"): st.error("Sin permiso."); st.stop()
+    st.markdown("<h2 style='text-align: center;'>📦 PROPUESTA DE PEDIDO</h2>", unsafe_allow_html=True)
+    if not shared_data["solicitud_pedido"]: st.info("No hay propuestas.")
     else:
-        st.info("Módulo temporalmente oculto por espacio en este snippet. Usa el botón volver.")
-        if st.button("⬅ Volver"): st.session_state["pagina"] = "inicio"; st.rerun()
+        df_sol = pd.DataFrame(shared_data["solicitud_pedido"])
+        shared_data["solicitud_pedido"] = st.data_editor(df_sol, use_container_width=True, hide_index=True).to_dict(orient="records")
+        if st.button("🚀 Solicitar Pedido Definitivo"):
+            sel = [i for i in shared_data["solicitud_pedido"] if i.get("seleccion_enfermera")]
+            for it in sel: shared_data["pedidos_definitivos"].append(it)
+            shared_data["solicitud_pedido"] = [i for i in shared_data["solicitud_pedido"] if not i.get("seleccion_enfermera")]
+            st.success("Enviado al farmacéutico."); time.sleep(1); st.rerun()
+    if st.button("⬅ Volver"): st.session_state["pagina"] = "inicio"; st.rerun()
+
+elif st.session_state["pagina"] == "solicitud_pedido_admin":
+    if not tiene_permiso(rol_actual, "propuesta"): st.error("Sin permiso."); st.stop()
+    st.markdown("<h2 style='text-align: center;'>📦 PROPUESTA (ENVIADO A ENFERMERÍA)</h2>", unsafe_allow_html=True)
+    if shared_data["solicitud_pedido"]: st.dataframe(pd.DataFrame(shared_data["solicitud_pedido"]), use_container_width=True, hide_index=True)
+    else: st.info("Vacío.")
+    if st.button("⬅ Volver"): st.session_state["pagina"] = "inicio"; st.rerun()
+
+elif st.session_state["pagina"] == "pedidos_definitivos_admin":
+    if not tiene_permiso(rol_actual, "pedidos_def"): st.error("Sin permiso."); st.stop()
+    st.markdown("<h2 style='text-align: center; color: #1e293b; font-weight: 800;'>🛒 PEDIDOS DEFINITIVOS Y ESCÁNER</h2>", unsafe_allow_html=True)
+    if not shared_data["pedidos_definitivos"]: st.info("No hay pedidos definitivos pendientes.")
+    else:
+        with st.form("form_pedidos_dm", clear_on_submit=True):
+            cadena_dm_pedido = st.text_input("📥 Escanee el DataMatrix del medicamento:", key="input_dm_pedido")
+            btn_ped = st.form_submit_button("Añadir")
+            if btn_ped and cadena_dm_pedido:
+                parsed_ped = traducir_datamatrix(cadena_dm_pedido, BD_MEDICAMENTOS)
+                for item in shared_data["pedidos_definitivos"]:
+                    if not item.get("datamatrix"):
+                        item["datamatrix"] = cadena_dm_pedido
+                        item["lote"] = parsed_ped['lote']
+                        item["caducidad"] = parsed_ped['caducidad']
+                        break
+        df_defs = pd.DataFrame(shared_data["pedidos_definitivos"])
+        shared_data["pedidos_definitivos"] = st.data_editor(df_defs, use_container_width=True, hide_index=True).to_dict(orient="records")
+        col_pdf, col_act = st.columns(2)
+        with col_pdf:
+            pdf_bytes = generar_albaran_pdf(shared_data["pedidos_definitivos"])
+            st.download_button("📄 Imprimir Albarán de Entrega (PDF)", data=pdf_bytes, file_name="Albaran_Entrega.pdf", mime="application/pdf", use_container_width=True)
+        with col_act:
+            if st.button("📌 Actualizar Última Entrega y Limpiar", use_container_width=True):
+                shared_data["pedidos_definitivos"] = []
+                st.success("¡Fechas actualizadas!"); time.sleep(1); st.rerun()
+    if st.button("⬅ Volver al Menú"): st.session_state["pagina"] = "inicio"; st.rerun()
+
+elif st.session_state["pagina"] == "incidencias":
+    if not tiene_permiso(rol_actual, "incidencias"): st.error("Sin permiso."); st.stop()
+    st.markdown("<h2 style='text-align: center; color: #1e293b; font-weight: 800;'>⚠️ PANEL DE INCIDENCIAS</h2>", unsafe_allow_html=True)
+    if shared_data["incidencias_activas"]:
+        df_inc = pd.DataFrame(shared_data["incidencias_activas"])
+        shared_data["incidencias_activas"] = st.data_editor(df_inc, use_container_width=True, hide_index=True).to_dict(orient="records")
+    else: st.info("No hay incidencias.")
+    if st.button("⬅ Volver"): st.session_state["pagina"] = "inicio"; st.rerun()
+    
+elif st.session_state["pagina"] == "gestion_usuarios":
+    if not (tiene_permiso(rol_actual, "usuarios") or tiene_permiso(rol_actual, "roles")): st.error("Sin permiso."); st.stop()
+    st.markdown("<h2 style='text-align: center; color: #1e293b; font-weight: 800;'>🔐 GESTIÓN DE USUARIOS Y ROLES</h2>", unsafe_allow_html=True)
+    if st.button("⬅ Volver"): st.session_state["pagina"] = "inicio"; st.rerun()
