@@ -156,7 +156,6 @@ def traducir_datamatrix(raw_code, bd_medicamentos):
         res['lote'] = "LOTE01"
         res['caducidad'] = "31/12/2028"
         
-    # Cruce con la Base de Datos Oficial
     cn_busqueda = res['cn'].zfill(6)
     if cn_busqueda in bd_medicamentos:
         datos = bd_medicamentos[cn_busqueda]
@@ -169,10 +168,8 @@ def traducir_datamatrix(raw_code, bd_medicamentos):
     return res
 
 def limpiar_texto_pdf(texto):
-    """Filtro ultraseguro para evitar errores de codificación en FPDF."""
     if not texto: return ""
     texto_str = str(texto)
-    # Reemplazos preventivos
     texto_str = texto_str.replace('ñ', 'n').replace('Ñ', 'N').replace('º', '.').replace('ª', '.').replace('—', '-')
     texto_limpio = unicodedata.normalize('NFKD', texto_str).encode('ascii', 'ignore').decode('ascii')
     return texto_limpio
@@ -377,7 +374,7 @@ if st.session_state["pagina"] == "inicio":
                 if st.button("📦 **SELECCIÓN DE ENFERMERÍA**", use_container_width=True): st.session_state["pagina"] = "seleccion_productos_enfermera"; st.rerun()
 
 # ----------------------------------------------------
-# MÓDULO DE BAJA DE PACIENTE Y DEVOLUCIÓN
+# MÓDULO DE GESTIÓN DE BAJAS DE PACIENTES
 # ----------------------------------------------------
 elif st.session_state["pagina"] == "baja_paciente":
     if not tiene_permiso(rol_actual, "bajas"): st.error("Sin permiso."); st.stop()
