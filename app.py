@@ -396,7 +396,6 @@ elif st.session_state["pagina"] == "baja_paciente":
     if "devolucion_activa" not in st.session_state: st.session_state["devolucion_activa"] = False
     if "paciente_a_baja_obj" not in st.session_state: st.session_state["paciente_a_baja_obj"] = None
     if "df_devolucion" not in st.session_state: 
-        # Nuevas columnas requeridas
         st.session_state["df_devolucion"] = pd.DataFrame(columns=['Medicamento', 'Descripción', 'CN', 'Lote', 'Caducidad', 'Pastillas restantes'])
 
     if not st.session_state["devolucion_activa"]:
@@ -413,7 +412,7 @@ elif st.session_state["pagina"] == "baja_paciente":
         
         st.markdown("##### 📷 Lector de Código DataMatrix (Devoluciones)")
         
-        # Formulario que se limpia solo. Al escanear el código y pulsar Enter (lo hace la pistola sola), se procesa y limpia.
+        # Este formulario solo tiene la casilla de escaneo
         with st.form("form_escanear_dm", clear_on_submit=True):
             cadena_dm = st.text_input("Escanee o introduzca la cadena del código DataMatrix del envase:")
             submit_scan = st.form_submit_button("Añadir a la Lista (o presione Enter al escanear)", use_container_width=True)
@@ -426,7 +425,7 @@ elif st.session_state["pagina"] == "baja_paciente":
                     'CN': parsed['cn'],
                     'Lote': parsed['lote'],
                     'Caducidad': parsed['caducidad'],
-                    'Pastillas restantes': 0  # Valor por defecto, se editará en la tabla
+                    'Pastillas restantes': 0  # Por defecto
                 }
                 st.session_state["df_devolucion"] = pd.concat([st.session_state["df_devolucion"], pd.DataFrame([nuevo_reg])], ignore_index=True)
                 st.success(f"✅ ¡{parsed['farmaco']} añadido! Indique el número de pastillas en la tabla inferior.")
@@ -434,7 +433,7 @@ elif st.session_state["pagina"] == "baja_paciente":
         if not st.session_state["df_devolucion"].empty:
             st.markdown("##### 📋 Listado de Devolución (Edite las pastillas directamente en la tabla)")
             
-            # Tabla interactiva donde SOLO la columna 'Pastillas restantes' es editable
+            # Tabla donde TODO está bloqueado excepto 'Pastillas restantes'
             st.session_state["df_devolucion"] = st.data_editor(
                 st.session_state["df_devolucion"], 
                 use_container_width=True, 
@@ -446,7 +445,7 @@ elif st.session_state["pagina"] == "baja_paciente":
             col_pdf, col_fin = st.columns(2)
             with col_pdf:
                 pdf_bytes = generar_albaran_devolucion_pdf(pac_obj['nombre'], pac_obj['ref'], st.session_state["df_devolucion"].to_dict(orient="records"))
-                st.download_button("📄 Imprimir Albarán de Devolución (PDF)", data=pdf_bytes, file_name=f"Devolucion.pdf", mime="application/pdf", use_container_width=True)
+                st.download_button("📄 Imprimir Albarán de Devolución (PDF)", data=pdf_bytes, file_name=f"Devolucion_{pac_obj['nombre']}.pdf", mime="application/pdf", use_container_width=True)
             with col_fin:
                 if st.button("💾 Finalizar y Dar de Baja Definitiva", use_container_width=True):
                     if pac_obj["etiqueta"] in shared_data["lista_pacientes"]: 
