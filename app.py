@@ -30,8 +30,9 @@ st.markdown("""
     [data-testid="column"] > div { display: flex !important; flex-direction: column !important; flex-grow: 1 !important; }
     div.stButton > button { width: 100% !important; height: 48px !important; border-radius: 10px !important; font-weight: 700 !important; font-size: 12px !important; background-color: #ffffff !important; color: #334155 !important; border: 2px solid #cbd5e1 !important; box-shadow: 0 2px 6px rgba(0,0,0,0.03) !important; transition: all 0.2s ease-in-out !important; flex-grow: 1 !important; }
     div.stButton > button:hover { background-color: #f1f5f9 !important; border-color: #0ea5e9 !important; color: #0284c7 !important; transform: translateY(-1px); }
-    /* Estilo para destacar el botón de BAJAS */
+    /* Estilo para destacar el botón de BAJAS y el INICIO */
     div.stButton > button:contains("BAJAS") { border-color: #ef4444 !important; color: #dc2626 !important; background-color: #fef2f2 !important; }
+    div.stButton > button:contains("INICIO") { border-color: #0ea5e9 !important; color: #0284c7 !important; background-color: #f0f9ff !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -91,7 +92,7 @@ def cargar_datos_excel():
     return pacientes_dict
 
 # ----------------------------------------------------
-# MOTOR DE LECTURA DATAMATRIX (CON DESGLOSE PRECISO)
+# MOTOR DE LECTURA DATAMATRIX
 # ----------------------------------------------------
 def traducir_datamatrix(raw_code, bd_medicamentos):
     res = {'marca': '', 'farmaco': '', 'tamano': '', 'cn': '', 'lote': '', 'caducidad': '', 'serie': ''}
@@ -100,13 +101,11 @@ def traducir_datamatrix(raw_code, bd_medicamentos):
     clean = str(raw_code).replace('\x1D', '<GS>')
     
     try:
-        # AI (712) Código Nacional
         if '712' in clean:
             idx = clean.find('712')
             if len(clean) >= idx + 9:
                 res['cn'] = clean[idx+3 : idx+9].strip()
                 
-        # AI (01) GTIN
         if not res['cn'] and '01' in clean:
             idx = clean.find('01')
             if len(clean) >= idx + 16:
@@ -117,7 +116,6 @@ def traducir_datamatrix(raw_code, bd_medicamentos):
         if not res['cn'] and len(clean) >= 6:
             res['cn'] = clean[-6:].strip()
 
-        # AI (17) Caducidad
         if '17' in clean:
             idx = clean.find('17')
             if len(clean) >= idx + 8:
@@ -128,7 +126,6 @@ def traducir_datamatrix(raw_code, bd_medicamentos):
                     res['caducidad'] = f"{dd}/{mm}/20{yy}"
         if not res['caducidad']: res['caducidad'] = "31/12/2028"
 
-        # AI (10) Lote
         idx_10 = clean.find('10')
         if idx_10 != -1:
             sub = clean[idx_10 + 2:]
@@ -140,7 +137,6 @@ def traducir_datamatrix(raw_code, bd_medicamentos):
                 res['lote'] = sub[:20].strip()
         if not res['lote']: res['lote'] = "LOTE01"
 
-        # AI (21) Serie
         idx_21 = clean.find('21')
         if idx_21 != -1:
             sub = clean[idx_21 + 2:]
@@ -245,15 +241,19 @@ if st.session_state["usuario_autenticado"] is None:
                 else: st.error("❌ Usuario o clave incorrectos.")
     st.stop()
 
-# CABECERA 100% FIJA A 6 COLUMNAS
+# CABECERA: 7 COLUMNAS INCLUYENDO "INICIO" AL PRINCIPIO
 st.markdown('<div class="dashboard-header">', unsafe_allow_html=True)
 st.markdown('<div class="logo-container"><span style="font-size: 24px;">💊</span><span class="logo-title">SPD FARMACIA VILLEGAS</span></div>', unsafe_allow_html=True)
 
 rol_actual = st.session_state["rol_usuario"]
 st.markdown(f'<div class="status-bar"><span>Sistema activo <span style="color: #22c55e; font-size: 16px;">●</span></span><span>Usuario: <b>{st.session_state["usuario_autenticado"]}</b> ({rol_actual.upper()})</span></div>', unsafe_allow_html=True)
 
-# Defino explícitamente 6 columnas sin condicionales
-col_alta, col_baja, col_ped, col_inc, col_user, col_logout = st.columns(6, gap="small")
+col_inicio, col_alta, col_baja, col_ped, col_inc, col_user, col_logout = st.columns(7, gap="small")
+
+with col_inicio:
+    if st.button("🏠 INICIO", key="btn_hdr_inicio", use_container_width=True):
+        st.session_state["pagina"] = "inicio"
+        st.rerun()
 
 with col_alta:
     if st.button("ALTA", key="btn_hdr_alta", use_container_width=True):
@@ -379,11 +379,18 @@ elif st.session_state["pagina"] == "baja_paciente":
                 st.success(f"✅ ¡{parsed['farmaco']} añadido correctamente!")
 
         if not st.session_state["df_devolucion"].empty:
+            # BOTÓN PARA ELIMINAR EL ÚLTIMO MEDICAMENTO ESCANEADO
+            if st.button("🗑️ Eliminar último escaneo", use_container_width=False):
+                st.session_state["df_devolucion"] = st.session_state["df_devolucion"].iloc[:-1]
+                st.rerun()
+            
             st.markdown("##### 📋 Listado de Devolución (Edite la columna 'Pastillas restantes')")
+            # num_rows="dynamic" permite borrar filas desde la tabla marcándolas y pulsando suprimir o la papelera
             st.session_state["df_devolucion"] = st.data_editor(
                 st.session_state["df_devolucion"], 
                 use_container_width=True, 
                 hide_index=True,
+                num_rows="dynamic",
                 disabled=['Medicamento', 'Descripción', 'CN', 'Lote', 'Caducidad', 'Serie'] 
             )
             st.markdown("---")
@@ -399,6 +406,7 @@ elif st.session_state["pagina"] == "baja_paciente":
                     st.session_state["df_devolucion"] = pd.DataFrame(columns=['Medicamento', 'Descripción', 'CN', 'Lote', 'Caducidad', 'Serie', 'Pastillas restantes'])
                     st.success("¡Baja registrada con éxito!"); time.sleep(1.5); st.rerun()
 
+        st.markdown("<br>", unsafe_allow_html=True)
         if st.button("⬅ Volver a Modalidades"):
             st.session_state["baja_paso"] = "elegir_modalidad"
             st.rerun()
@@ -441,15 +449,67 @@ elif st.session_state["pagina"] == "detalle_paciente":
     info = lista_pacientes.get(pk)
     if info:
         st.markdown(f"<h3 style='text-align: center;'>Paciente: {info['nombre']}</h3>", unsafe_allow_html=True)
+        
+        # Guardamos la edición del dataframe en session/shared context
         info["datos"] = st.data_editor(info["datos"], use_container_width=True, hide_index=True)
-    if st.button("⬅ Volver"): st.session_state["pagina"] = "lista_pacientes"; st.rerun()
+        shared_data["lista_pacientes"][pk]["datos"] = info["datos"]
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        # NUEVOS BOTONES DE ACCIÓN PARA LA FICHA
+        col_btn_ped, col_btn_inc = st.columns(2)
+        
+        with col_btn_ped:
+            if st.button("📦 Enviar a Propuesta de Pedido", use_container_width=True):
+                df_pedidos = info["datos"][info["datos"]["Pedido"] == True]
+                if not df_pedidos.empty:
+                    for _, row in df_pedidos.iterrows():
+                        item = {
+                            "ref": info["ref"],
+                            "paciente": info["nombre"],
+                            "medicamento": row.get("Medicamento", ""),
+                            "cn": row.get("CN", ""),
+                            "posologia": row.get("Posologia", ""),
+                            "seleccion_enfermera": False
+                        }
+                        shared_data["solicitud_pedido"].append(item)
+                    # Desmarcamos las casillas una vez enviado
+                    info["datos"]["Pedido"] = False
+                    shared_data["lista_pacientes"][pk]["datos"] = info["datos"]
+                    st.success("¡Medicamentos enviados a la bandeja de Pedidos!")
+                    time.sleep(1.5); st.rerun()
+                else:
+                    st.warning("Marca la casilla 'Pedido' en algún medicamento primero.")
+
+        with col_btn_inc:
+            if st.button("⚠️ Enviar a Incidencias", use_container_width=True):
+                df_incidencias = info["datos"][info["datos"]["Incidencia"] == True]
+                if not df_incidencias.empty:
+                    for _, row in df_incidencias.iterrows():
+                        incidencia = {
+                            "fecha": datetime.now().strftime("%d/%m/%Y %H:%M"),
+                            "paciente": info["nombre"],
+                            "medicamento": row.get("Medicamento", ""),
+                            "estado": "Pendiente",
+                            "descripcion": "Generada automáticamente desde ficha"
+                        }
+                        shared_data["incidencias_activas"].append(incidencia)
+                    # Desmarcamos las casillas una vez enviado
+                    info["datos"]["Incidencia"] = False
+                    shared_data["lista_pacientes"][pk]["datos"] = info["datos"]
+                    st.success("¡Incidencia registrada correctamente!")
+                    time.sleep(1.5); st.rerun()
+                else:
+                    st.warning("Marca la casilla 'Incidencia' en algún medicamento primero.")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.button("⬅ Volver a Lista"): st.session_state["pagina"] = "lista_pacientes"; st.rerun()
 
 elif st.session_state["pagina"] == "seleccion_productos_enfermera":
     st.markdown("<h2 style='text-align: center;'>📦 PROPUESTA DE PEDIDO</h2>", unsafe_allow_html=True)
     if not shared_data["solicitud_pedido"]: st.info("No hay propuestas.")
     else:
         df_sol = pd.DataFrame(shared_data["solicitud_pedido"])
-        shared_data["solicitud_pedido"] = st.data_editor(df_sol, use_container_width=True, hide_index=True).to_dict(orient="records")
+        shared_data["solicitud_pedido"] = st.data_editor(df_sol, use_container_width=True, hide_index=True, num_rows="dynamic").to_dict(orient="records")
         if st.button("🚀 Solicitar Pedido Definitivo"):
             sel = [i for i in shared_data["solicitud_pedido"] if i.get("seleccion_enfermera")]
             for it in sel: shared_data["pedidos_definitivos"].append(it)
@@ -469,7 +529,7 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
     else:
         with st.form("form_pedidos_dm", clear_on_submit=True):
             cadena_dm_pedido = st.text_input("📥 Escanee el DataMatrix del medicamento:")
-            btn_ped = st.form_submit_button("Añadir")
+            btn_ped = st.form_submit_button("Añadir Escaneo")
             if btn_ped and cadena_dm_pedido:
                 parsed_ped = traducir_datamatrix(cadena_dm_pedido, BD_MEDICAMENTOS)
                 for item in shared_data["pedidos_definitivos"]:
@@ -478,8 +538,11 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
                         item["lote"] = parsed_ped['lote']
                         item["caducidad"] = parsed_ped['caducidad']
                         break
+        
+        st.markdown("*(Puedes borrar escaneos erróneos marcando la casilla de la izquierda en la tabla y pulsando el icono de papelera)*")
         df_defs = pd.DataFrame(shared_data["pedidos_definitivos"])
-        shared_data["pedidos_definitivos"] = st.data_editor(df_defs, use_container_width=True, hide_index=True).to_dict(orient="records")
+        shared_data["pedidos_definitivos"] = st.data_editor(df_defs, use_container_width=True, hide_index=True, num_rows="dynamic").to_dict(orient="records")
+        
         col_pdf, col_act = st.columns(2)
         with col_pdf:
             pdf = FPDF(orientation='L') 
@@ -524,7 +587,7 @@ elif st.session_state["pagina"] == "incidencias":
     st.markdown("<h2 style='text-align: center; color: #1e293b; font-weight: 800;'>⚠️ PANEL DE INCIDENCIAS</h2>", unsafe_allow_html=True)
     if shared_data["incidencias_activas"]:
         df_inc = pd.DataFrame(shared_data["incidencias_activas"])
-        shared_data["incidencias_activas"] = st.data_editor(df_inc, use_container_width=True, hide_index=True).to_dict(orient="records")
+        shared_data["incidencias_activas"] = st.data_editor(df_inc, use_container_width=True, hide_index=True, num_rows="dynamic").to_dict(orient="records")
     else: st.info("No hay incidencias.")
     if st.button("⬅ Volver"): st.session_state["pagina"] = "inicio"; st.rerun()
     
