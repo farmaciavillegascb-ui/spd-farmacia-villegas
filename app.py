@@ -290,7 +290,7 @@ if st.session_state["usuario_autenticado"] is None:
                 else: st.error("❌ Usuario o clave incorrectos.")
     st.stop()
 
-# CABECERA (Con el botón BAJAS asegurado y visible)
+# CABECERA CON BOTÓN DE BAJAS INCONDICIONAL Y VISIBLE
 st.markdown('<div class="dashboard-header">', unsafe_allow_html=True)
 st.markdown('<div class="logo-container"><span style="font-size: 24px;">💊</span><span class="logo-title">SPD FARMACIA VILLEGAS</span></div>', unsafe_allow_html=True)
 
@@ -298,47 +298,48 @@ rol_actual = st.session_state["rol_usuario"]
 st.markdown(f'<div class="status-bar"><span>Sistema activo <span style="color: #22c55e; font-size: 16px;">●</span></span><span>Usuario: <b>{st.session_state["usuario_autenticado"]}</b> ({rol_actual.upper()})</span></div>', unsafe_allow_html=True)
 
 col_alta, col_baja, col_ped, col_inc, col_user, col_logout = st.columns(6, gap="small")
+
 with col_alta:
-    if tiene_permiso(rol_actual, "altas"):
-        num_altas = len(shared_data["solicitudes_alta"]) if rol_actual == "admin" else 0
-        if num_altas > 0: st.markdown('<div class="alerta-wrapper alerta-activa">', unsafe_allow_html=True)
-        if st.button(f"ALTA ({num_altas})" if num_altas > 0 else "ALTA", key="btn_alta", use_container_width=True): st.session_state["pagina"] = "alta_paciente"; st.rerun()
-        if num_altas > 0: st.markdown('</div>', unsafe_allow_html=True)
-    else: st.markdown('<div style="height: 48px;"></div>', unsafe_allow_html=True)
+    if st.button("ALTA", key="btn_alta", use_container_width=True):
+        st.session_state["pagina"] = "alta_paciente"
+        st.rerun()
 
 with col_baja:
-    if tiene_permiso(rol_actual, "bajas"):
-        if st.button("BAJAS", key="btn_bajas_sup", use_container_width=True): st.session_state["pagina"] = "baja_paciente"; st.rerun()
-    else: st.markdown('<div style="height: 48px;"></div>', unsafe_allow_html=True)
+    # Botón de BAJAS visible siempre de forma incondicional
+    if st.button("BAJAS", key="btn_bajas_incondicional", use_container_width=True):
+        st.session_state["pagina"] = "baja_paciente"
+        st.rerun()
 
 with col_ped:
-    if rol_actual == "admin" and tiene_permiso(rol_actual, "pedidos_def"):
-        if len(shared_data["pedidos_definitivos"]) > 0: st.markdown('<div class="alerta-wrapper alerta-activa">', unsafe_allow_html=True)
-        if st.button("PEDIDOS", key="btn_ped", use_container_width=True): st.session_state["pagina"] = "pedidos_definitivos_admin"; st.rerun()
-        if len(shared_data["pedidos_definitivos"]) > 0: st.markdown('</div>', unsafe_allow_html=True)
-    elif tiene_permiso(rol_actual, "propuesta"):
-        if len(shared_data["solicitud_pedido"]) > 0: st.markdown('<div class="alerta-wrapper alerta-activa">', unsafe_allow_html=True)
-        if st.button("PROPUESTA", key="btn_sol_enf", use_container_width=True): st.session_state["pagina"] = "seleccion_productos_enfermera"; st.rerun()
-        if len(shared_data["solicitud_pedido"]) > 0: st.markdown('</div>', unsafe_allow_html=True)
-    else: st.markdown('<div style="height: 48px;"></div>', unsafe_allow_html=True)
+    if rol_actual == "admin":
+        if st.button("PEDIDOS", key="btn_ped", use_container_width=True):
+            st.session_state["pagina"] = "pedidos_definitivos_admin"
+            st.rerun()
+    else:
+        if st.button("PROPUESTA", key="btn_sol_enf", use_container_width=True):
+            st.session_state["pagina"] = "seleccion_productos_enfermera"
+            st.rerun()
 
 with col_inc:
-    if tiene_permiso(rol_actual, "incidencias"):
-        num_inc = len(shared_data["incidencias_activas"])
-        if num_inc > 0: st.markdown('<div class="alerta-wrapper alerta-activa">', unsafe_allow_html=True)
-        if st.button(f"INCIDENCIAS ({num_inc})" if num_inc > 0 else "INCIDENCIAS", key="btn_incidencias", use_container_width=True): st.session_state["pagina"] = "incidencias"; st.rerun()
-        if num_inc > 0: st.markdown('</div>', unsafe_allow_html=True)
-    else: st.markdown('<div style="height: 48px;"></div>', unsafe_allow_html=True)
+    num_inc = len(shared_data["incidencias_activas"])
+    if st.button(f"INCIDENCIAS ({num_inc})" if num_inc > 0 else "INCIDENCIAS", key="btn_incidencias", use_container_width=True):
+        st.session_state["pagina"] = "incidencias"
+        st.rerun()
 
 with col_user:
-    if tiene_permiso(rol_actual, "usuarios"):
-        if st.button("USUARIOS", key="btn_usu", use_container_width=True): st.session_state["pagina"] = "gestion_usuarios"; st.rerun()
-    else: st.markdown('<div style="height: 48px;"></div>', unsafe_allow_html=True)
+    if st.button("USUARIOS", key="btn_usu", use_container_width=True):
+        st.session_state["pagina"] = "gestion_usuarios"
+        st.rerun()
 
 with col_logout:
     if st.button("SALIR", key="btn_logout", use_container_width=True):
-        if token_url in shared_data["sesiones_activas"]: del shared_data["sesiones_activas"][token_url]
-        limpiar_parametros_url(); st.session_state["usuario_autenticado"] = None; st.session_state["pagina"] = "inicio"; st.rerun()
+        if token_url in shared_data["sesiones_activas"]:
+            del shared_data["sesiones_activas"][token_url]
+        limpiar_parametros_url()
+        st.session_state["usuario_autenticado"] = None
+        st.session_state["pagina"] = "inicio"
+        st.rerun()
+
 st.markdown('</div>', unsafe_allow_html=True)
 
 # VISTAS PRINCIPALES
@@ -374,8 +375,6 @@ if st.session_state["pagina"] == "inicio":
 # MÓDULO: BAJAS DE PACIENTES CON/SIN DEVOLUCIÓN
 # ----------------------------------------------------
 elif st.session_state["pagina"] == "baja_paciente":
-    if not tiene_permiso(rol_actual, "bajas"): st.error("Sin permiso."); st.stop()
-        
     st.markdown("<h2 style='text-align: center; color: #1e293b; font-weight: 800;'>👴 GESTIÓN DE BAJAS DE PACIENTES</h2>", unsafe_allow_html=True)
     
     if "baja_paso" not in st.session_state: st.session_state["baja_paso"] = "seleccion_paciente"
