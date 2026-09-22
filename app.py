@@ -231,6 +231,8 @@ if "usuario_autenticado" not in st.session_state: st.session_state["usuario_aute
 if "rol_usuario" not in st.session_state: st.session_state["rol_usuario"] = None
 if "pagina" not in st.session_state: st.session_state["pagina"] = "inicio"
 if "paciente_seleccionado_key" not in st.session_state: st.session_state["paciente_seleccionado_key"] = None
+if "modo_incidencia" not in st.session_state: st.session_state["modo_incidencia"] = False
+if "borrador_incidencias" not in st.session_state: st.session_state["borrador_incidencias"] = pd.DataFrame()
 
 # Aumento a 1 HORA (3600 segundos) de inactividad
 TIEMPO_EXPIRACION = 3600  
@@ -313,13 +315,11 @@ else:
 txt_inc = f"INCIDENCIAS ({num_inc})" if num_inc > 0 else "INCIDENCIAS"
 alert_inc = (num_inc > 0)
 
-# Inyectar CSS dinámico si hay alertas (Columna 5 Pedidos, Columna 6 Incidencias en un array de 8)
 if alert_ped:
     st.markdown("""<style>[data-testid="column"]:nth-child(5) div.stButton > button { background: linear-gradient(135deg, #ef4444, #dc2626) !important; color: white !important; border: 2px solid #fca5a5 !important; animation: pulse-subtle 1.8s infinite; }</style>""", unsafe_allow_html=True)
 if alert_inc:
     st.markdown("""<style>[data-testid="column"]:nth-child(6) div.stButton > button { background: linear-gradient(135deg, #ef4444, #dc2626) !important; color: white !important; border: 2px solid #fca5a5 !important; animation: pulse-subtle 1.8s infinite; }</style>""", unsafe_allow_html=True)
 
-# 8 Columnas
 col_inicio, col_sync, col_alta, col_baja, col_ped, col_inc, col_user, col_logout = st.columns([1,1,1,1,1.2,1.2,1,1], gap="small")
 
 with col_inicio:
@@ -328,7 +328,7 @@ with col_inicio:
 
 with col_sync:
     if st.button("🔄 SYNC", key="btn_hdr_sync", use_container_width=True):
-        st.rerun()  # Actualiza la interfaz
+        st.rerun()  
 
 with col_alta:
     if st.button("ALTA", key="btn_hdr_alta", use_container_width=True):
@@ -514,77 +514,136 @@ elif st.session_state["pagina"] == "lista_pacientes":
 elif st.session_state["pagina"] == "detalle_paciente":
     pk = st.session_state["paciente_seleccionado_key"]
     info = lista_pacientes.get(pk)
+    
     if info:
         st.markdown(f"<h3 style='text-align: center;'>Paciente: {info['nombre']}</h3>", unsafe_allow_html=True)
         
-        # REORDENACIÓN DE COLUMNAS (Pedido e Incidencia a la izquierda)
-        df_pac = info["datos"]
-        cols = df_pac.columns.tolist()
-        for col_name in ['Incidencia', 'Pedido']:
-            if col_name in cols: cols.remove(col_name)
-        new_cols = ['Pedido', 'Incidencia'] + cols
-        new_cols = [c for c in new_cols if c in df_pac.columns]
-        
-        df_mostrar = df_pac[new_cols].copy()
+        if st.session_state["modo_incidencia"]:
+            st.markdown("### 📝 Completar Detalles de Incidencia")
+            st.info("Rellene el motivo y las observaciones para cada incidencia y confirme el envío.")
+            
+            df_edit = st.data_editor(
+                st.session_state["borrador_incidencias"],
+                column_config={
+                    "Código Paciente": st.column_config.TextColumn("Código Paciente", disabled=True),
+                    "Nombre Paciente": st.column_config.TextColumn("Nombre Paciente", disabled=True),
+                    "Medicamento": st.column_config.TextColumn("Medicamento", disabled=True),
+                    "C.N.": st.column_config.TextColumn("C.N.", disabled=True),
+                    "Motivo": st.column_config.SelectboxColumn(
+                        "Motivo",
+                        options=[
+                            'Falta de receta electrónica', 
+                            'Modificar posología', 
+                            'Medicación adelantada', 
+                            'Lo consume?', 
+                            'Falta de abastecimiento', 
+                            'Otros'
+                        ],
+                        required=True
+                    ),
+                    "Observaciones": st.column_config.TextColumn("Observaciones")
+                },
+                use_container_width=True,
+                hide_index=True
+            )
+            st.session_state["borrador_incidencias"] = df_edit
 
-        # Función para pintar la fila entera de verde o rojo si se marca
-        def color_filas_paciente(row):
-            if row.get('Incidencia', False) == True:
-                return ['background-color: #fecaca; color: #7f1d1d;'] * len(row) # Rojo pastel
-            elif row.get('Pedido', False) == True:
-                return ['background-color: #bbf7d0; color: #14532d;'] * len(row) # Verde pastel
-            return [''] * len(row)
-
-        styled_df = df_mostrar.style.apply(color_filas_paciente, axis=1)
-        info["datos"] = st.data_editor(styled_df, use_container_width=True, hide_index=True)
-        shared_data["lista_pacientes"][pk]["datos"] = info["datos"]
-
-        st.markdown("<br>", unsafe_allow_html=True)
-        col_btn_ped, col_btn_inc = st.columns(2)
-        
-        with col_btn_ped:
-            if st.button("📦 Enviar a Propuesta de Pedido", use_container_width=True):
-                df_pedidos = info["datos"][info["datos"]["Pedido"] == True]
-                if not df_pedidos.empty:
-                    for _, row in df_pedidos.iterrows():
-                        item = {
-                            "seleccion_enfermera": False,
-                            "ref": info["ref"],
-                            "paciente": info["nombre"],
-                            "medicamento": row.get("Medicamento", ""),
-                            "cn": row.get("CN", ""),
-                            "posologia": row.get("Posologia", "")
-                        }
-                        shared_data["solicitud_pedido"].append(item)
-                    info["datos"]["Pedido"] = False
-                    shared_data["lista_pacientes"][pk]["datos"] = info["datos"]
-                    st.success("¡Medicamentos enviados a la bandeja de Pedidos!")
-                    time.sleep(1.5); st.rerun()
-                else:
-                    st.warning("Marca la casilla 'Pedido' en algún medicamento primero.")
-
-        with col_btn_inc:
-            if st.button("⚠️ Enviar a Incidencias", use_container_width=True):
-                df_incidencias = info["datos"][info["datos"]["Incidencia"] == True]
-                if not df_incidencias.empty:
-                    for _, row in df_incidencias.iterrows():
+            col_conf, col_canc = st.columns(2)
+            with col_conf:
+                if st.button("✅ Confirmar y Enviar a Enfermería", use_container_width=True):
+                    for _, row in st.session_state["borrador_incidencias"].iterrows():
                         incidencia = {
                             "fecha": datetime.now().strftime("%d/%m/%Y %H:%M"),
-                            "paciente": info["nombre"],
-                            "medicamento": row.get("Medicamento", ""),
-                            "estado": "Pendiente",
-                            "descripcion": "Generada automáticamente desde ficha"
+                            "ref_paciente": row["Código Paciente"],
+                            "paciente": row["Nombre Paciente"],
+                            "medicamento": row["Medicamento"],
+                            "cn": row["C.N."],
+                            "motivo": row.get("Motivo", ""),
+                            "observaciones": row.get("Observaciones", ""),
+                            "estado": "Pendiente"
                         }
                         shared_data["incidencias_activas"].append(incidencia)
+                    
                     info["datos"]["Incidencia"] = False
                     shared_data["lista_pacientes"][pk]["datos"] = info["datos"]
-                    st.success("¡Incidencia registrada correctamente!")
+                    
+                    st.session_state["modo_incidencia"] = False
+                    st.success("¡Incidencias enviadas correctamente a la bandeja!")
                     time.sleep(1.5); st.rerun()
-                else:
-                    st.warning("Marca la casilla 'Incidencia' en algún medicamento primero.")
+            with col_canc:
+                if st.button("❌ Cancelar", use_container_width=True):
+                    st.session_state["modo_incidencia"] = False
+                    st.rerun()
+        else:
+            df_pac = info["datos"]
+            cols = df_pac.columns.tolist()
+            for col_name in ['Incidencia', 'Pedido']:
+                if col_name in cols: cols.remove(col_name)
+            new_cols = ['Pedido', 'Incidencia'] + cols
+            new_cols = [c for c in new_cols if c in df_pac.columns]
+            
+            df_mostrar = df_pac[new_cols].copy()
+
+            def color_filas_paciente(row):
+                if row.get('Incidencia', False) == True:
+                    return ['background-color: #fecaca; color: #7f1d1d;'] * len(row) 
+                elif row.get('Pedido', False) == True:
+                    return ['background-color: #bbf7d0; color: #14532d;'] * len(row) 
+                return [''] * len(row)
+
+            styled_df = df_mostrar.style.apply(color_filas_paciente, axis=1)
+            info["datos"] = st.data_editor(styled_df, use_container_width=True, hide_index=True)
+            shared_data["lista_pacientes"][pk]["datos"] = info["datos"]
+
+            st.markdown("<br>", unsafe_allow_html=True)
+            col_btn_ped, col_btn_inc = st.columns(2)
+            
+            with col_btn_ped:
+                if st.button("📦 Enviar a Propuesta de Pedido", use_container_width=True):
+                    df_pedidos = info["datos"][info["datos"]["Pedido"] == True]
+                    if not df_pedidos.empty:
+                        for _, row in df_pedidos.iterrows():
+                            item = {
+                                "seleccion_enfermera": False,
+                                "ref": info["ref"],
+                                "paciente": info["nombre"],
+                                "medicamento": row.get("Medicamento", ""),
+                                "cn": row.get("CN", ""),
+                                "posologia": row.get("Posologia", "")
+                            }
+                            shared_data["solicitud_pedido"].append(item)
+                        info["datos"]["Pedido"] = False
+                        shared_data["lista_pacientes"][pk]["datos"] = info["datos"]
+                        st.success("¡Medicamentos enviados a la bandeja de Pedidos!")
+                        time.sleep(1.5); st.rerun()
+                    else:
+                        st.warning("Marca la casilla 'Pedido' en algún medicamento primero.")
+
+            with col_btn_inc:
+                if st.button("⚠️ Enviar a Incidencias", use_container_width=True):
+                    df_incidencias = info["datos"][info["datos"]["Incidencia"] == True]
+                    if not df_incidencias.empty:
+                        filas_borrador = []
+                        for _, row in df_incidencias.iterrows():
+                            filas_borrador.append({
+                                "Código Paciente": str(info.get("ref", "")),
+                                "Nombre Paciente": str(info.get("nombre", "")),
+                                "Medicamento": str(row.get("Medicamento", "")),
+                                "C.N.": str(row.get("CN", "")),
+                                "Motivo": "Falta de receta electrónica",
+                                "Observaciones": ""
+                            })
+                        st.session_state["borrador_incidencias"] = pd.DataFrame(filas_borrador)
+                        st.session_state["modo_incidencia"] = True
+                        st.rerun()
+                    else:
+                        st.warning("Marca la casilla 'Incidencia' en algún medicamento primero.")
 
     st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("⬅ Volver a Lista"): st.session_state["pagina"] = "lista_pacientes"; st.rerun()
+    if st.button("⬅ Volver a Lista"): 
+        st.session_state["modo_incidencia"] = False
+        st.session_state["pagina"] = "lista_pacientes"
+        st.rerun()
 
 elif st.session_state["pagina"] == "seleccion_productos_enfermera":
     st.markdown("<h2 style='text-align: center;'>📦 PROPUESTA DE PEDIDO</h2>", unsafe_allow_html=True)
@@ -592,14 +651,12 @@ elif st.session_state["pagina"] == "seleccion_productos_enfermera":
     else:
         df_sol = pd.DataFrame(shared_data["solicitud_pedido"])
         
-        # REORDENACIÓN DE COLUMNAS (seleccion_enfermera a la izquierda)
         if 'seleccion_enfermera' in df_sol.columns:
             cols = df_sol.columns.tolist()
             cols.remove('seleccion_enfermera')
             cols.insert(0, 'seleccion_enfermera')
             df_sol = df_sol[cols]
             
-        # Función para pintar la fila entera de verde pastel si la enfermera la selecciona
         def color_filas_enfermera(row):
             if row.get('seleccion_enfermera', False) == True:
                 return ['background-color: #bbf7d0; color: #14532d;'] * len(row)
