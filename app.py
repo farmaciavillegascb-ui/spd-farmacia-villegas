@@ -456,6 +456,7 @@ elif st.session_state["pagina"] == "baja_paciente":
                 use_container_width=True, 
                 hide_index=True,
                 num_rows="dynamic",
+                key="editor_devoluciones_baja",
                 disabled=['Medicamento', 'Descripción', 'CN', 'Lote', 'Caducidad', 'Serie'] 
             )
             st.markdown("---")
@@ -486,7 +487,7 @@ elif st.session_state["pagina"] == "alta_paciente":
         nuevo_nombre = st.text_input("Nombre completo:")
         nuevo_cip = st.text_input("CIP:")
         nueva_ref = st.text_input("Referencia:", value="NUEVO")
-        meds_editadas = st.data_editor(st.session_state["df_alta_cargado"], num_rows="dynamic", use_container_width=True)
+        meds_editadas = st.data_editor(st.session_state["df_alta_cargado"], num_rows="dynamic", key="editor_alta_paciente", use_container_width=True)
         if st.form_submit_button("Guardar y Dar de Alta"):
             if nuevo_nombre.strip():
                 df_final = meds_editadas.copy()
@@ -521,6 +522,7 @@ elif st.session_state["pagina"] == "detalle_paciente":
             
             df_edit = st.data_editor(
                 st.session_state["borrador_incidencias"],
+                key="editor_borrador_incidencias",
                 column_config={
                     "Código Paciente": st.column_config.TextColumn("Código Paciente", disabled=True),
                     "Nombre Paciente": st.column_config.TextColumn("Nombre Paciente", disabled=True),
@@ -581,7 +583,8 @@ elif st.session_state["pagina"] == "detalle_paciente":
             
             df_mostrar = df_pac[new_cols].copy()
 
-            info["datos"] = st.data_editor(df_mostrar, use_container_width=True, hide_index=True)
+            # Editor ultra fluido con key única por paciente para evitar pérdida de foco
+            info["datos"] = st.data_editor(df_mostrar, use_container_width=True, hide_index=True, key=f"editor_paciente_{pk}")
             shared_data["lista_pacientes"][pk]["datos"] = info["datos"]
 
             st.markdown("<br>", unsafe_allow_html=True)
@@ -648,7 +651,7 @@ elif st.session_state["pagina"] == "seleccion_productos_enfermera":
             cols.insert(0, 'seleccion_enfermera')
             df_sol = df_sol[cols]
             
-        df_edited = st.data_editor(df_sol, use_container_width=True, hide_index=True, num_rows="dynamic")
+        df_edited = st.data_editor(df_sol, use_container_width=True, hide_index=True, num_rows="dynamic", key="editor_enfermera_propuesta")
         shared_data["solicitud_pedido"] = df_edited.to_dict(orient="records")
         
         if st.button("🚀 Solicitar Pedido Definitivo"):
@@ -701,7 +704,6 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
         st.markdown("##### 📋 Listado de Pedidos Definitivos:")
         df_defs = pd.DataFrame(shared_data["pedidos_definitivos"])
         
-        # Asegurarnos de que las columnas clave existan
         for col in ['datamatrix', 'lote', 'caducidad']:
             if col not in df_defs.columns: df_defs[col] = ""
 
@@ -710,6 +712,7 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
             use_container_width=True, 
             hide_index=True, 
             num_rows="dynamic",
+            key="editor_pedidos_definitivos",
             column_config={
                 "datamatrix": st.column_config.TextColumn("DataMatrix", help="Cadena escaneada"),
                 "lote": st.column_config.TextColumn("Lote"),
@@ -767,7 +770,7 @@ elif st.session_state["pagina"] == "incidencias":
         if 'Solucionada' not in df_inc.columns:
             df_inc.insert(0, 'Solucionada', False)
             
-        df_edit_inc = st.data_editor(df_inc, use_container_width=True, hide_index=True)
+        df_edit_inc = st.data_editor(df_inc, use_container_width=True, hide_index=True, key="editor_panel_incidencias")
         
         if rol_actual == "admin":
             st.markdown("<br>", unsafe_allow_html=True)
