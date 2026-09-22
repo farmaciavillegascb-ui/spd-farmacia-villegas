@@ -94,7 +94,7 @@ def cargar_datos_excel():
     return pacientes_dict
 
 # ----------------------------------------------------
-# MOTOR DE LECTURA DATAMATRIX
+# MOTOR DE LECTURA DATAMATRIX (SEGÚN ESPECIFICACIÓN)
 # ----------------------------------------------------
 def traducir_datamatrix(raw_code, bd_medicamentos):
     res = {'marca': '', 'farmaco': '', 'tamano': '', 'cn': '', 'lote': '', 'caducidad': '', 'serie': ''}
@@ -103,48 +103,55 @@ def traducir_datamatrix(raw_code, bd_medicamentos):
     clean = str(raw_code).replace('\x1D', '<GS>')
     
     try:
-        if clean.startswith('01') and len(clean) >= 16:
-            gtin = clean[2:16]
-            res['cn'] = gtin[7:13]
-        elif '01' in clean:
+        # 1. AI (712) Código Nacional de Reembolso (6 dígitos)
+        if '712' in clean:
+            idx = clean.find('712')
+            if len(clean) >= idx + 9:
+                res['cn'] = clean[idx+3 : idx+9].strip()
+                
+        # 2. AI (01) GTIN (14 dígitos) - Fallback o extracción de CN
+        if not res['cn'] and '01' in clean:
             idx = clean.find('01')
             if len(clean) >= idx + 16:
                 gtin = clean[idx+2 : idx+16]
-                res['cn'] = gtin[7:13]
-                
+                if len(gtin) == 14:
+                    res['cn'] = gtin[7:13]
+                    
         if not res['cn'] and len(clean) >= 6:
             res['cn'] = clean[-6:].strip()
 
-        idx_17 = clean.find('17')
-        if idx_17 != -1 and len(clean) >= idx_17 + 8:
-            cad_raw = clean[idx_17 + 2 : idx_17 + 8]
-            if len(cad_raw) == 6 and cad_raw.isdigit():
-                yy, mm, dd = cad_raw[0:2], cad_raw[2:4], cad_raw[4:6]
-                if dd == '00': dd = '01'
-                res['caducidad'] = f"{dd}/{mm}/20{yy}"
+        # 3. AI (17) Fecha de Caducidad (AAMMDD)
+        if '17' in clean:
+            idx = clean.find('17')
+            if len(clean) >= idx + 8:
+                cad_raw = clean[idx+2 : idx+8]
+                if len(cad_raw) == 6 and cad_raw.isdigit():
+                    yy, mm, dd = cad_raw[0:2], cad_raw[2:4], cad_raw[4:6]
+                    if dd == '00': dd = '01'
+                    res['caducidad'] = f"{dd}/{mm}/20{yy}"
         if not res['caducidad']: res['caducidad'] = "31/12/2028"
 
-        idx_17_pos = clean.find('17')
-        search_start = idx_17_pos + 8 if idx_17_pos != -1 else 0
-        idx_10 = clean.find('10', search_start)
-        if idx_10 == -1: idx_10 = clean.find('10')
-        
+        # 4. AI (10) Número de Lote (Variable)
+        idx_10 = clean.find('10')
         if idx_10 != -1:
             sub = clean[idx_10 + 2:]
             if '<GS>' in sub:
                 res['lote'] = sub.split('<GS>')[0]
             else:
-                for ai in ['21', '17']:
+                for ai in ['21', '17', '712', '01']:
                     if ai in sub: sub = sub.split(ai)[0]
                 res['lote'] = sub[:20].strip()
         if not res['lote']: res['lote'] = "LOTE01"
 
+        # 5. AI (21) Número de Serie (Variable)
         idx_21 = clean.find('21')
         if idx_21 != -1:
             sub = clean[idx_21 + 2:]
             if '<GS>' in sub:
                 res['serie'] = sub.split('<GS>')[0]
             else:
+                for ai in ['17', '10', '712']:
+                    if ai in sub: sub = sub.split(ai)[0]
                 res['serie'] = sub[:20].strip()
 
     except Exception:
@@ -169,6 +176,34 @@ def limpiar_texto_pdf(texto):
     texto_str = texto_str.replace('ñ', 'n').replace('Ñ', 'N').replace('º', '.').replace('ª', '.').replace('—', '-')
     texto_limpio = unicodedata.normalize('NFKD', texto_str).encode('ascii', 'ignore').decode('ascii')
     return texto_limpio
+
+def generar_albaran_devolucion_pdf(nombre_paciente, ref_paciente, lista_devolucion):
+    pdf = FPDF(orientation='L') 
+    pdf.add_page()
+    pdf.set_font("Arial", 'B', 14)
+    pdf.cell(0, 10, limpiar_texto_pdf("FARMACIA VILLEGAS C.B. - ALBARAN DE DEVOLUCION"), ln=True, align='C')
+    pdf.set_font("Arial", '', 11)
+    pdf.cell(0, 6, limpiar_texto_pdf(f"Paciente: {nombre_paciente} (Ref: {ref_paciente})"), ln=True, align='L')
+    pdf.ln(5)
+    
+    pdf.set_font("Arial", 'B', 9)
+    col_widths = [55, 65, 20, 35, 25, 30, 25] 
+    headers = ["Medicamento", "Descripcion", "CN", "Lote", "Caducidad", "Serie", "Restantes"]
+    for i in range(len(headers)):
+        pdf.cell(col_widths[i], 8, limpiar_texto_pdf(headers[i]), border=1, align='C')
+    pdf.ln()
+    
+    pdf.set_font("Arial", '', 8)
+    for row in lista_devolucion:
+        pdf.cell(col_widths[0], 8, limpiar_texto_pdf(str(row.get('Medicamento', ''))[:30]), border=1)
+        pdf.cell(col_widths[1], 8, limpiar_texto_pdf(str(row.get('Descripción', ''))[:40]), border=1)
+        pdf.cell(col_widths[2], 8, limpiar_texto_pdf(str(row.get('CN', ''))[:10]), border=1, align='C')
+        pdf.cell(col_widths[3], 8, limpiar_texto_pdf(str(row.get('Lote', ''))[:18]), border=1, align='C')
+        pdf.cell(col_widths[4], 8, limpiar_texto_pdf(str(row.get('Caducidad', ''))[:10]), border=1, align='C')
+        pdf.cell(col_widths[5], 8, limpiar_texto_pdf(str(row.get('Serie', ''))[:15]), border=1, align='C')
+        pdf.cell(col_widths[6], 8, limpiar_texto_pdf(str(row.get('Pastillas restantes', '0'))), border=1, align='C')
+        pdf.ln()
+    return pdf.output(dest='S').encode('latin1')
 
 def obtener_parametro_url(nombre):
     try: return st.query_params.get(nombre)
@@ -197,8 +232,8 @@ def get_shared_data():
         "lista_pacientes": cargar_datos_excel(),
         "solicitud_pedido": [], "pedidos_definitivos": [], "incidencias_activas": [], "solicitudes_alta": [], 
         "roles_sistema": {
-            "admin": ["pacientes", "altas", "propuesta", "pedidos_def", "incidencias", "usuarios", "roles"],
-            "enfermera": ["pacientes", "altas", "propuesta", "incidencias"]
+            "admin": ["pacientes", "altas", "bajas", "propuesta", "pedidos_def", "incidencias", "usuarios", "roles"],
+            "enfermera": ["pacientes", "altas", "bajas", "propuesta", "incidencias"]
         },
         "usuarios_sistema": {
             "farmaciaB": {"clave": "farmaciaB2026", "rol": "admin"}, "farmaciaR": {"clave": "farmaciaR2026", "rol": "admin"},
@@ -260,20 +295,24 @@ if st.session_state["usuario_autenticado"] is None:
                 else: st.error("❌ Usuario o clave incorrectos.")
     st.stop()
 
-# CABECERA (Sin botón de bajas)
+# CABECERA (Con botón de BAJAS DE PACIENTES)
 st.markdown('<div class="dashboard-header">', unsafe_allow_html=True)
 st.markdown('<div class="logo-container"><span style="font-size: 24px;">💊</span><span class="logo-title">SPD FARMACIA VILLEGAS</span></div>', unsafe_allow_html=True)
 
 rol_actual = st.session_state["rol_usuario"]
 st.markdown(f'<div class="status-bar"><span>Sistema activo <span style="color: #22c55e; font-size: 16px;">●</span></span><span>Usuario: <b>{st.session_state["usuario_autenticado"]}</b> ({rol_actual.upper()})</span></div>', unsafe_allow_html=True)
 
-col_alta, col_ped, col_inc, col_user, col_logout = st.columns(5, gap="small")
+col_alta, col_baja, col_ped, col_inc, col_user, col_logout = st.columns(6, gap="small")
 with col_alta:
     if tiene_permiso(rol_actual, "altas"):
         num_altas = len(shared_data["solicitudes_alta"]) if rol_actual == "admin" else 0
         if num_altas > 0: st.markdown('<div class="alerta-wrapper alerta-activa">', unsafe_allow_html=True)
         if st.button(f"ALTA ({num_altas})" if num_altas > 0 else "ALTA", key="btn_alta", use_container_width=True): st.session_state["pagina"] = "alta_paciente"; st.rerun()
         if num_altas > 0: st.markdown('</div>', unsafe_allow_html=True)
+    else: st.markdown('<div style="height: 48px;"></div>', unsafe_allow_html=True)
+with col_baja:
+    if tiene_permiso(rol_actual, "bajas"):
+        if st.button("BAJAS", key="btn_bajas", use_container_width=True): st.session_state["pagina"] = "baja_paciente"; st.rerun()
     else: st.markdown('<div style="height: 48px;"></div>', unsafe_allow_html=True)
 with col_ped:
     if rol_actual == "admin" and tiene_permiso(rol_actual, "pedidos_def"):
@@ -330,6 +369,110 @@ if st.session_state["pagina"] == "inicio":
                 if st.button("🛒 **VER PEDIDOS DEFINITIVOS**", use_container_width=True): st.session_state["pagina"] = "pedidos_definitivos_admin"; st.rerun()
             else:
                 if st.button("📦 **SELECCIÓN DE ENFERMERÍA**", use_container_width=True): st.session_state["pagina"] = "seleccion_productos_enfermera"; st.rerun()
+
+# ----------------------------------------------------
+# NUEVO MÓDULO: BAJAS DE PACIENTES CON/SIN DEVOLUCIÓN
+# ----------------------------------------------------
+elif st.session_state["pagina"] == "baja_paciente":
+    if not tiene_permiso(rol_actual, "bajas"): st.error("Sin permiso."); st.stop()
+        
+    st.markdown("<h2 style='text-align: center; color: #1e293b; font-weight: 800;'>👴 GESTIÓN DE BAJAS DE PACIENTES</h2>", unsafe_allow_html=True)
+    
+    if "baja_paso" not in st.session_state: st.session_state["baja_paso"] = "seleccion_paciente"
+    if "paciente_baja_obj" not in st.session_state: st.session_state["paciente_baja_obj"] = None
+    if "df_devolucion" not in st.session_state: 
+        st.session_state["df_devolucion"] = pd.DataFrame(columns=['Medicamento', 'Descripción', 'CN', 'Lote', 'Caducidad', 'Serie', 'Pastillas restantes'])
+
+    # PASO 1: Seleccionar paciente
+    if st.session_state["baja_paso"] == "seleccion_paciente":
+        st.markdown("##### 🔍 Seleccione el paciente que causa baja:")
+        paciente_seleccionado = st.selectbox("Paciente activo:", [""] + list(shared_data["lista_pacientes"].keys()), key="select_baja_paciente")
+        
+        c_btn1, c_btn2 = st.columns(2)
+        with c_btn1:
+            if st.button("Continuar", use_container_width=True) and paciente_seleccionado:
+                info_p = shared_data["lista_pacientes"][paciente_seleccionado]
+                st.session_state["paciente_baja_obj"] = {"etiqueta": paciente_seleccionado, "nombre": info_p["nombre"], "ref": info_p["ref"]}
+                st.session_state["baja_paso"] = "elegir_modalidad"
+                st.rerun()
+        with c_btn2:
+            if st.button("⬅ Volver al Menú Principal", use_container_width=True):
+                st.session_state["pagina"] = "inicio"
+                st.rerun()
+
+    # PASO 2: Elegir modalidad (Con o sin devolución)
+    elif st.session_state["baja_paso"] == "elegir_modalidad":
+        pac = st.session_state["paciente_baja_obj"]
+        st.info(f"👤 Paciente seleccionado: **{pac['nombre']}** (Ref: {pac['ref']})")
+        st.markdown("##### Seleccione cómo desea procesar esta baja:")
+        
+        col_m1, col_m2, col_m3 = st.columns(3, gap="medium")
+        with col_m1:
+            if st.button("❌ Baja SIN Devolución", use_container_width=True):
+                if pac["etiqueta"] in shared_data["lista_pacientes"]:
+                    del shared_data["lista_pacientes"][pac["etiqueta"]]
+                st.success("¡Baja procesada correctamente sin devolución!")
+                st.session_state["baja_paso"] = "seleccion_paciente"
+                time.sleep(1); st.rerun()
+        with col_m2:
+            if st.button("📦 Baja CON Devolución", use_container_width=True):
+                st.session_state["baja_paso"] = "pantalla_devolucion"
+                st.rerun()
+        with col_m3:
+            if st.button("↩ Cancelar / Cambiar Paciente", use_container_width=True):
+                st.session_state["baja_paso"] = "seleccion_paciente"
+                st.rerun()
+
+    # PASO 3: Pantalla de Devolución de Medicación con DataMatrix
+    elif st.session_state["baja_paso"] == "pantalla_devolucion":
+        pac = st.session_state["paciente_baja_obj"]
+        st.info(f"📦 Registrando Devolución de Medicación para: **{pac['nombre']}** (Ref: {pac['ref']})")
+        
+        st.markdown("##### 📷 Escaneo de Código DataMatrix")
+        with st.form("form_escanear_dm_baja", clear_on_submit=True):
+            cadena_dm = st.text_input("Escanee o introduzca la cadena continua del DataMatrix:")
+            submit_scan = st.form_submit_button("Añadir Medicamento a la Devolución (o presione Enter)", use_container_width=True)
+            
+            if submit_scan and cadena_dm:
+                parsed = traducir_datamatrix(cadena_dm, BD_MEDICAMENTOS)
+                nuevo_reg = {
+                    'Medicamento': parsed['farmaco'],
+                    'Descripción': f"{parsed['marca']} - {parsed['tamano']}".strip(" -"),
+                    'CN': parsed['cn'],
+                    'Lote': parsed['lote'],
+                    'Caducidad': parsed['caducidad'],
+                    'Serie': parsed['serie'],
+                    'Pastillas restantes': 0 # Casilla editable para la cantidad
+                }
+                st.session_state["df_devolucion"] = pd.concat([st.session_state["df_devolucion"], pd.DataFrame([nuevo_reg])], ignore_index=True)
+                st.success(f"✅ ¡{parsed['farmaco']} añadido correctamente! Indique las pastillas en la tabla.")
+
+        if not st.session_state["df_devolucion"].empty:
+            st.markdown("##### 📋 Listado de Devolución (Edite la columna 'Pastillas restantes')")
+            
+            st.session_state["df_devolucion"] = st.data_editor(
+                st.session_state["df_devolucion"], 
+                use_container_width=True, 
+                hide_index=True,
+                disabled=['Medicamento', 'Descripción', 'CN', 'Lote', 'Caducidad', 'Serie'] 
+            )
+            
+            st.markdown("---")
+            col_pdf, col_fin = st.columns(2)
+            with col_pdf:
+                pdf_bytes = generar_albaran_devolucion_pdf(pac['nombre'], pac['ref'], st.session_state["df_devolucion"].to_dict(orient="records"))
+                st.download_button("📄 Imprimir Albarán de Devolución (PDF)", data=pdf_bytes, file_name=f"Devolucion_{pac['ref']}.pdf", mime="application/pdf", use_container_width=True)
+            with col_fin:
+                if st.button("💾 Finalizar Baja y Guardar", use_container_width=True):
+                    if pac["etiqueta"] in shared_data["lista_pacientes"]: 
+                        del shared_data["lista_pacientes"][pac["etiqueta"]]
+                    st.session_state["baja_paso"] = "seleccion_paciente"
+                    st.session_state["df_devolucion"] = pd.DataFrame(columns=['Medicamento', 'Descripción', 'CN', 'Lote', 'Caducidad', 'Serie', 'Pastillas restantes'])
+                    st.success("¡Baja y devolución registradas con éxito!"); time.sleep(1); st.rerun()
+
+        if st.button("⬅ Volver a Modalidades"):
+            st.session_state["baja_paso"] = "elegir_modalidad"
+            st.rerun()
 
 # ----------------------------------------------------
 # RESTO DE MÓDULOS ACTIVOS
@@ -416,7 +559,6 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
         shared_data["pedidos_definitivos"] = st.data_editor(df_defs, use_container_width=True, hide_index=True).to_dict(orient="records")
         col_pdf, col_act = st.columns(2)
         with col_pdf:
-            # Generador de PDF integrado
             pdf = FPDF(orientation='L') 
             pdf.add_page()
             pdf.set_font("Arial", 'B', 14)
