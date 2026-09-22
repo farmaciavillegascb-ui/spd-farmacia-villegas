@@ -28,12 +28,10 @@ st.markdown("""
     .status-bar { display: flex; justify-content: space-between; align-items: center; background: #f8fafc; padding: 8px 16px; border-radius: 10px; font-size: 13px; color: #475569; font-weight: 600; margin-bottom: 15px; border: 1px solid #e2e8f0; }
     [data-testid="column"] { display: flex !important; flex-direction: column !important; align-items: stretch !important; }
     [data-testid="column"] > div { display: flex !important; flex-direction: column !important; flex-grow: 1 !important; }
-    .alerta-wrapper { display: flex !important; flex-direction: column !important; flex-grow: 1 !important; width: 100% !important; }
-    .alerta-wrapper > div { display: flex !important; flex-direction: column !important; flex-grow: 1 !important; }
     div.stButton > button { width: 100% !important; height: 48px !important; border-radius: 10px !important; font-weight: 700 !important; font-size: 12px !important; background-color: #ffffff !important; color: #334155 !important; border: 2px solid #cbd5e1 !important; box-shadow: 0 2px 6px rgba(0,0,0,0.03) !important; transition: all 0.2s ease-in-out !important; flex-grow: 1 !important; }
     div.stButton > button:hover { background-color: #f1f5f9 !important; border-color: #0ea5e9 !important; color: #0284c7 !important; transform: translateY(-1px); }
-    @keyframes pulse-subtle { 0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); } 70% { transform: scale(1.02); box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); } 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
-    .alerta-activa button { background: linear-gradient(135deg, #ef4444, #dc2626) !important; color: white !important; border: 2px solid #fca5a5 !important; font-weight: bold !important; animation: pulse-subtle 1.8s infinite; }
+    /* Estilo exclusivo y destacado para el botón de BAJAS */
+    div.stButton > button[kind="secondary"] { border-color: #f59e0b !important; color: #d97706 !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -290,7 +288,7 @@ if st.session_state["usuario_autenticado"] is None:
                 else: st.error("❌ Usuario o clave incorrectos.")
     st.stop()
 
-# CABECERA CON BOTÓN DE BAJAS INCONDICIONAL Y VISIBLE
+# CABECERA CON 6 COLUMNAS EXPLICITAS (ALTA, BAJAS, PEDIDOS, INCIDENCIAS, USUARIOS, SALIR)
 st.markdown('<div class="dashboard-header">', unsafe_allow_html=True)
 st.markdown('<div class="logo-container"><span style="font-size: 24px;">💊</span><span class="logo-title">SPD FARMACIA VILLEGAS</span></div>', unsafe_allow_html=True)
 
@@ -305,8 +303,7 @@ with col_alta:
         st.rerun()
 
 with col_baja:
-    # Botón de BAJAS visible siempre de forma incondicional
-    if st.button("BAJAS", key="btn_bajas_incondicional", use_container_width=True):
+    if st.button("🚪 BAJAS", key="btn_bajas_definitivo", use_container_width=True):
         st.session_state["pagina"] = "baja_paciente"
         st.rerun()
 
