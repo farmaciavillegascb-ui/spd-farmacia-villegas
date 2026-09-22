@@ -581,7 +581,6 @@ elif st.session_state["pagina"] == "detalle_paciente":
             
             df_mostrar = df_pac[new_cols].copy()
 
-            # Renderizado rápido y fluido con st.data_editor nativo
             info["datos"] = st.data_editor(df_mostrar, use_container_width=True, hide_index=True)
             shared_data["lista_pacientes"][pk]["datos"] = info["datos"]
 
@@ -599,7 +598,10 @@ elif st.session_state["pagina"] == "detalle_paciente":
                                 "paciente": info["nombre"],
                                 "medicamento": row.get("Medicamento", ""),
                                 "cn": row.get("CN", ""),
-                                "posologia": row.get("Posologia", "")
+                                "posologia": row.get("Posologia", ""),
+                                "datamatrix": "",
+                                "lote": "",
+                                "caducidad": ""
                             }
                             shared_data["solicitud_pedido"].append(item)
                         info["datos"]["Pedido"] = False
@@ -671,25 +673,52 @@ elif st.session_state["pagina"] == "solicitud_pedido_admin":
     if st.button("⬅ Volver"): st.session_state["pagina"] = "inicio"; st.rerun()
 
 elif st.session_state["pagina"] == "pedidos_definitivos_admin":
-    st.markdown("<h2 style='text-align: center; color: #1e293b; font-weight: 800;'>🛒 PEDIDOS DEFINITIVOS Y ESCÁNER</h2>", unsafe_allow_html=True)
-    if not shared_data["pedidos_definitivos"]: st.info("No hay pedidos definitivos pendientes.")
+    st.markdown("<h2 style='text-align: center; color: #1e293b; font-weight: 800;'>🛒 PEDIDOS DEFINITIVOS Y ESCÁNER DATAMATRIX</h2>", unsafe_allow_html=True)
+    if not shared_data["pedidos_definitivos"]: 
+        st.info("No hay pedidos definitivos pendientes en este momento.")
     else:
+        st.markdown("##### 📥 Escanee el código DataMatrix de cada medicamento para rellenar Lote y Caducidad automáticamente:")
         with st.form("form_pedidos_dm", clear_on_submit=True):
-            cadena_dm_pedido = st.text_input("📥 Escanee el DataMatrix del medicamento:")
-            btn_ped = st.form_submit_button("Añadir Escaneo")
-            if btn_ped and cadena_dm_pedido:
+            cadena_dm_pedido = st.text_input("Cadena DataMatrix escaneada:")
+            btn_escaneo = st.form_submit_button("🔍 Procesar y Asignar al Siguiente Medicamento", use_container_width=True)
+            
+            if btn_escaneo and cadena_dm_pedido:
                 parsed_ped = traducir_datamatrix(cadena_dm_pedido, BD_MEDICAMENTOS)
+                asignado = False
                 for item in shared_data["pedidos_definitivos"]:
-                    if not item.get("datamatrix"):
+                    if not item.get("datamatrix") or item.get("datamatrix") == "":
                         item["datamatrix"] = cadena_dm_pedido
                         item["lote"] = parsed_ped['lote']
                         item["caducidad"] = parsed_ped['caducidad']
+                        asignado = True
                         break
-        
-        st.markdown("*(Puedes borrar escaneos erróneos marcando la casilla de la izquierda en la tabla y pulsando el icono de papelera)*")
+                if asignado:
+                    st.success(f"✅ Medicamento asignado correctamente (Lote: {parsed_ped['lote']}, Cad: {parsed_ped['caducidad']})")
+                else:
+                    st.warning("⚠️ Todos los medicamentos de la lista ya tienen un DataMatrix asignado.")
+
+        st.markdown("---")
+        st.markdown("##### 📋 Listado de Pedidos Definitivos:")
         df_defs = pd.DataFrame(shared_data["pedidos_definitivos"])
-        shared_data["pedidos_definitivos"] = st.data_editor(df_defs, use_container_width=True, hide_index=True, num_rows="dynamic").to_dict(orient="records")
         
+        # Asegurarnos de que las columnas clave existan
+        for col in ['datamatrix', 'lote', 'caducidad']:
+            if col not in df_defs.columns: df_defs[col] = ""
+
+        df_defs_edited = st.data_editor(
+            df_defs, 
+            use_container_width=True, 
+            hide_index=True, 
+            num_rows="dynamic",
+            column_config={
+                "datamatrix": st.column_config.TextColumn("DataMatrix", help="Cadena escaneada"),
+                "lote": st.column_config.TextColumn("Lote"),
+                "caducidad": st.column_config.TextColumn("Caducidad")
+            }
+        )
+        shared_data["pedidos_definitivos"] = df_defs_edited.to_dict(orient="records")
+        
+        st.markdown("<br>", unsafe_allow_html=True)
         col_pdf, col_act = st.columns(2)
         with col_pdf:
             pdf = FPDF(orientation='L') 
@@ -735,7 +764,6 @@ elif st.session_state["pagina"] == "incidencias":
     if shared_data["incidencias_activas"]:
         df_inc = pd.DataFrame(shared_data["incidencias_activas"])
         
-        # Añadir columna de validación para farmacéuticos si no existe
         if 'Solucionada' not in df_inc.columns:
             df_inc.insert(0, 'Solucionada', False)
             
@@ -744,9 +772,7 @@ elif st.session_state["pagina"] == "incidencias":
         if rol_actual == "admin":
             st.markdown("<br>", unsafe_allow_html=True)
             if st.button("🗑️ Validar y Eliminar Incidencias Marcadas", use_container_width=True):
-                # Filtramos las que NO están marcadas como solucionadas
                 restantes = df_edit_inc[df_edit_inc['Solucionada'] != True]
-                # Eliminamos la columna temporal antes de guardar
                 if 'Solucionada' in restantes.columns:
                     restantes = restantes.drop(columns=['Solucionada'])
                 shared_data["incidencias_activas"] = restantes.to_dict(orient="records")
