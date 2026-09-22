@@ -30,9 +30,17 @@ st.markdown("""
     [data-testid="column"] > div { display: flex !important; flex-direction: column !important; flex-grow: 1 !important; }
     div.stButton > button { width: 100% !important; height: 48px !important; border-radius: 10px !important; font-weight: 700 !important; font-size: 12px !important; background-color: #ffffff !important; color: #334155 !important; border: 2px solid #cbd5e1 !important; box-shadow: 0 2px 6px rgba(0,0,0,0.03) !important; transition: all 0.2s ease-in-out !important; flex-grow: 1 !important; }
     div.stButton > button:hover { background-color: #f1f5f9 !important; border-color: #0ea5e9 !important; color: #0284c7 !important; transform: translateY(-1px); }
-    /* Estilo para destacar el botón de BAJAS y el INICIO */
-    div.stButton > button:contains("BAJAS") { border-color: #ef4444 !important; color: #dc2626 !important; background-color: #fef2f2 !important; }
-    div.stButton > button:contains("INICIO") { border-color: #0ea5e9 !important; color: #0284c7 !important; background-color: #f0f9ff !important; }
+    
+    /* Animación de parpadeo rojo (alerta) */
+    @keyframes pulse-subtle { 
+        0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.6); } 
+        50% { transform: scale(1.03); box-shadow: 0 0 0 12px rgba(239, 68, 68, 0); } 
+        100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } 
+    }
+    
+    /* Estilos fijos para Columna 1 (INICIO) y Columna 3 (BAJAS) */
+    [data-testid="column"]:nth-child(1) div.stButton > button { border-color: #0ea5e9 !important; color: #0284c7 !important; background-color: #f0f9ff !important; }
+    [data-testid="column"]:nth-child(3) div.stButton > button { border-color: #f59e0b !important; color: #d97706 !important; background-color: #fffbeb !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -248,6 +256,38 @@ st.markdown('<div class="logo-container"><span style="font-size: 24px;">💊</sp
 rol_actual = st.session_state["rol_usuario"]
 st.markdown(f'<div class="status-bar"><span>Sistema activo <span style="color: #22c55e; font-size: 16px;">●</span></span><span>Usuario: <b>{st.session_state["usuario_autenticado"]}</b> ({rol_actual.upper()})</span></div>', unsafe_allow_html=True)
 
+# Lógica de conteos para alertas (rojo parpadeante)
+num_ped = len(shared_data["pedidos_definitivos"])
+num_prop = len(shared_data["solicitud_pedido"])
+num_inc = len(shared_data["incidencias_activas"])
+
+if rol_actual == "admin":
+    txt_ped = f"PEDIDOS ({num_ped})" if num_ped > 0 else "PEDIDOS"
+    alert_ped = (num_ped > 0)
+else:
+    txt_ped = f"PROPUESTA ({num_prop})" if num_prop > 0 else "PROPUESTA"
+    alert_ped = (num_prop > 0)
+
+txt_inc = f"INCIDENCIAS ({num_inc})" if num_inc > 0 else "INCIDENCIAS"
+alert_inc = (num_inc > 0)
+
+# Inyectar CSS dinámico en la Columna 4 (Pedidos) si hay alertas
+if alert_ped:
+    st.markdown("""
+    <style>
+        [data-testid="column"]:nth-child(4) div.stButton > button { background: linear-gradient(135deg, #ef4444, #dc2626) !important; color: white !important; border: 2px solid #fca5a5 !important; animation: pulse-subtle 1.8s infinite; }
+    </style>
+    """, unsafe_allow_html=True)
+
+# Inyectar CSS dinámico en la Columna 5 (Incidencias) si hay alertas
+if alert_inc:
+    st.markdown("""
+    <style>
+        [data-testid="column"]:nth-child(5) div.stButton > button { background: linear-gradient(135deg, #ef4444, #dc2626) !important; color: white !important; border: 2px solid #fca5a5 !important; animation: pulse-subtle 1.8s infinite; }
+    </style>
+    """, unsafe_allow_html=True)
+
+# Dibujar las 7 columnas
 col_inicio, col_alta, col_baja, col_ped, col_inc, col_user, col_logout = st.columns(7, gap="small")
 
 with col_inicio:
@@ -266,12 +306,12 @@ with col_baja:
         st.rerun()
 
 with col_ped:
-    if st.button("PEDIDOS", key="btn_hdr_ped", use_container_width=True):
+    if st.button(txt_ped, key="btn_hdr_ped", use_container_width=True):
         st.session_state["pagina"] = "pedidos_definitivos_admin" if rol_actual == "admin" else "seleccion_productos_enfermera"
         st.rerun()
 
 with col_inc:
-    if st.button("INCIDENCIAS", key="btn_hdr_inc", use_container_width=True):
+    if st.button(txt_inc, key="btn_hdr_inc", use_container_width=True):
         st.session_state["pagina"] = "incidencias"
         st.rerun()
 
