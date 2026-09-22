@@ -31,14 +31,12 @@ st.markdown("""
     div.stButton > button { width: 100% !important; height: 48px !important; border-radius: 10px !important; font-weight: 700 !important; font-size: 12px !important; background-color: #ffffff !important; color: #334155 !important; border: 2px solid #cbd5e1 !important; box-shadow: 0 2px 6px rgba(0,0,0,0.03) !important; transition: all 0.2s ease-in-out !important; flex-grow: 1 !important; }
     div.stButton > button:hover { background-color: #f1f5f9 !important; border-color: #0ea5e9 !important; color: #0284c7 !important; transform: translateY(-1px); }
     
-    /* Animación de parpadeo rojo (alerta) */
     @keyframes pulse-subtle { 
         0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.6); } 
         50% { transform: scale(1.03); box-shadow: 0 0 0 12px rgba(239, 68, 68, 0); } 
         100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } 
     }
     
-    /* Estilos fijos para botones de la cabecera (INICIO, SYNC y BAJAS) */
     [data-testid="column"]:nth-child(1) div.stButton > button { border-color: #0ea5e9 !important; color: #0284c7 !important; background-color: #f0f9ff !important; }
     [data-testid="column"]:nth-child(2) div.stButton > button { border-color: #10b981 !important; color: #047857 !important; background-color: #ecfdf5 !important; }
     [data-testid="column"]:nth-child(4) div.stButton > button { border-color: #f59e0b !important; color: #d97706 !important; background-color: #fffbeb !important; }
@@ -234,7 +232,6 @@ if "paciente_seleccionado_key" not in st.session_state: st.session_state["pacien
 if "modo_incidencia" not in st.session_state: st.session_state["modo_incidencia"] = False
 if "borrador_incidencias" not in st.session_state: st.session_state["borrador_incidencias"] = pd.DataFrame()
 
-# Aumento a 1 HORA (3600 segundos) de inactividad
 TIEMPO_EXPIRACION = 3600  
 
 def obtener_parametro_url(nombre):
@@ -584,15 +581,8 @@ elif st.session_state["pagina"] == "detalle_paciente":
             
             df_mostrar = df_pac[new_cols].copy()
 
-            def color_filas_paciente(row):
-                if row.get('Incidencia', False) == True:
-                    return ['background-color: #fecaca; color: #7f1d1d;'] * len(row) 
-                elif row.get('Pedido', False) == True:
-                    return ['background-color: #bbf7d0; color: #14532d;'] * len(row) 
-                return [''] * len(row)
-
-            styled_df = df_mostrar.style.apply(color_filas_paciente, axis=1)
-            info["datos"] = st.data_editor(styled_df, use_container_width=True, hide_index=True)
+            # Renderizado rápido y fluido con st.data_editor nativo
+            info["datos"] = st.data_editor(df_mostrar, use_container_width=True, hide_index=True)
             shared_data["lista_pacientes"][pk]["datos"] = info["datos"]
 
             st.markdown("<br>", unsafe_allow_html=True)
@@ -650,21 +640,13 @@ elif st.session_state["pagina"] == "seleccion_productos_enfermera":
     if not shared_data["solicitud_pedido"]: st.info("No hay propuestas.")
     else:
         df_sol = pd.DataFrame(shared_data["solicitud_pedido"])
-        
         if 'seleccion_enfermera' in df_sol.columns:
             cols = df_sol.columns.tolist()
             cols.remove('seleccion_enfermera')
             cols.insert(0, 'seleccion_enfermera')
             df_sol = df_sol[cols]
             
-        def color_filas_enfermera(row):
-            if row.get('seleccion_enfermera', False) == True:
-                return ['background-color: #bbf7d0; color: #14532d;'] * len(row)
-            return [''] * len(row)
-
-        styled_sol = df_sol.style.apply(color_filas_enfermera, axis=1)
-            
-        df_edited = st.data_editor(styled_sol, use_container_width=True, hide_index=True, num_rows="dynamic")
+        df_edited = st.data_editor(df_sol, use_container_width=True, hide_index=True, num_rows="dynamic")
         shared_data["solicitud_pedido"] = df_edited.to_dict(orient="records")
         
         if st.button("🚀 Solicitar Pedido Definitivo"):
@@ -752,8 +734,28 @@ elif st.session_state["pagina"] == "incidencias":
     st.markdown("<h2 style='text-align: center; color: #1e293b; font-weight: 800;'>⚠️ PANEL DE INCIDENCIAS</h2>", unsafe_allow_html=True)
     if shared_data["incidencias_activas"]:
         df_inc = pd.DataFrame(shared_data["incidencias_activas"])
-        shared_data["incidencias_activas"] = st.data_editor(df_inc, use_container_width=True, hide_index=True, num_rows="dynamic").to_dict(orient="records")
-    else: st.info("No hay incidencias.")
+        
+        # Añadir columna de validación para farmacéuticos si no existe
+        if 'Solucionada' not in df_inc.columns:
+            df_inc.insert(0, 'Solucionada', False)
+            
+        df_edit_inc = st.data_editor(df_inc, use_container_width=True, hide_index=True)
+        
+        if rol_actual == "admin":
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("🗑️ Validar y Eliminar Incidencias Marcadas", use_container_width=True):
+                # Filtramos las que NO están marcadas como solucionadas
+                restantes = df_edit_inc[df_edit_inc['Solucionada'] != True]
+                # Eliminamos la columna temporal antes de guardar
+                if 'Solucionada' in restantes.columns:
+                    restantes = restantes.drop(columns=['Solucionada'])
+                shared_data["incidencias_activas"] = restantes.to_dict(orient="records")
+                st.success("¡Incidencias validadas y eliminadas correctamente!")
+                time.sleep(1.5); st.rerun()
+    else: 
+        st.info("No hay incidencias activas en este momento.")
+        
+    st.markdown("<br>", unsafe_allow_html=True)
     if st.button("⬅ Volver"): st.session_state["pagina"] = "inicio"; st.rerun()
     
 elif st.session_state["pagina"] == "gestion_usuarios":
