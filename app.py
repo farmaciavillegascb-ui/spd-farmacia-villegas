@@ -574,7 +574,7 @@ elif st.session_state["pagina"] == "detalle_paciente":
                     st.session_state["modo_incidencia"] = False
                     st.rerun()
         else:
-            df_pac = info["datos"]
+            df_pac = info["datos"].copy()
             cols = df_pac.columns.tolist()
             for col_name in ['Incidencia', 'Pedido']:
                 if col_name in cols: cols.remove(col_name)
@@ -583,8 +583,43 @@ elif st.session_state["pagina"] == "detalle_paciente":
             
             df_mostrar = df_pac[new_cols].copy()
 
-            # Editor ultra fluido con key única por paciente para evitar pérdida de foco
-            info["datos"] = st.data_editor(df_mostrar, use_container_width=True, hide_index=True, key=f"editor_paciente_{pk}")
+            # Función para sombrear filas: Verde pastel si pedido, Rojo pastel si incidencia
+            def color_filas_paciente(row):
+                if row.get('Incidencia', False) == True:
+                    return ['background-color: #fecaca; color: #7f1d1d;'] * len(row) 
+                elif row.get('Pedido', False) == True:
+                    return ['background-color: #bbf7d0; color: #14532d;'] * len(row) 
+                return [''] * len(row)
+
+            styled_df = df_mostrar.style.apply(color_filas_paciente, axis=1)
+
+            # Editor fluido aplicando colores condicionales y clave única
+            df_edited_result = st.data_editor(styled_df, use_container_width=True, hide_index=True, key=f"editor_paciente_{pk}")
+            
+            # Asegurar exclusividad mutua entre Pedido e Incidencia en la misma fila
+            cambio_realizado = False
+            for idx in range(len(df_edited_result)):
+                p_val = df_edited_result.loc[idx, 'Pedido'] if 'Pedido' in df_edited_result.columns else False
+                i_val = df_edited_result.loc[idx, 'Incidencia'] if 'Incidencia' in df_edited_result.columns else False
+                
+                if p_val and i_val:
+                    old_p = df_mostrar.loc[idx, 'Pedido'] if 'Pedido' in df_mostrar.columns else False
+                    old_i = df_mostrar.loc[idx, 'Incidencia'] if 'Incidencia' in df_mostrar.columns else False
+                    
+                    if p_val and not old_p:
+                        df_edited_result.loc[idx, 'Incidencia'] = False
+                        cambio_realizado = True
+                    elif i_val and not old_i:
+                        df_edited_result.loc[idx, 'Pedido'] = False
+                        cambio_realizado = True
+                    else:
+                        df_edited_result.loc[idx, 'Incidencia'] = False
+                        cambio_realizado = True
+
+            if cambio_realizado:
+                st.rerun()
+
+            info["datos"] = df_edited_result
             shared_data["lista_pacientes"][pk]["datos"] = info["datos"]
 
             st.markdown("<br>", unsafe_allow_html=True)
