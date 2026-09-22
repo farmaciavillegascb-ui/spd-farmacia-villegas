@@ -292,7 +292,7 @@ if st.session_state["usuario_autenticado"] is None:
                 else: st.error("❌ Usuario o clave incorrectos.")
     st.stop()
 
-# CABECERA: AHORA CON 8 COLUMNAS (INCLUYE SYNC)
+# CABECERA: 8 COLUMNAS (INCLUYE SYNC)
 st.markdown('<div class="dashboard-header">', unsafe_allow_html=True)
 st.markdown('<div class="logo-container"><span style="font-size: 24px;">💊</span><span class="logo-title">SPD FARMACIA VILLEGAS</span></div>', unsafe_allow_html=True)
 
@@ -328,7 +328,7 @@ with col_inicio:
 
 with col_sync:
     if st.button("🔄 SYNC", key="btn_hdr_sync", use_container_width=True):
-        st.rerun()  # Actualiza la interfaz con los datos más recientes en memoria
+        st.rerun()  # Actualiza la interfaz
 
 with col_alta:
     if st.button("ALTA", key="btn_hdr_alta", use_container_width=True):
@@ -521,12 +521,22 @@ elif st.session_state["pagina"] == "detalle_paciente":
         df_pac = info["datos"]
         cols = df_pac.columns.tolist()
         for col_name in ['Incidencia', 'Pedido']:
-            if col_name in cols:
-                cols.remove(col_name)
+            if col_name in cols: cols.remove(col_name)
         new_cols = ['Pedido', 'Incidencia'] + cols
-        new_cols = [c for c in new_cols if c in df_pac.columns] # Prevenir errores
+        new_cols = [c for c in new_cols if c in df_pac.columns]
+        
+        df_mostrar = df_pac[new_cols].copy()
 
-        info["datos"] = st.data_editor(df_pac[new_cols], use_container_width=True, hide_index=True)
+        # Función para pintar la fila entera de verde o rojo si se marca
+        def color_filas_paciente(row):
+            if row.get('Incidencia', False) == True:
+                return ['background-color: #fecaca; color: #7f1d1d;'] * len(row) # Rojo pastel
+            elif row.get('Pedido', False) == True:
+                return ['background-color: #bbf7d0; color: #14532d;'] * len(row) # Verde pastel
+            return [''] * len(row)
+
+        styled_df = df_mostrar.style.apply(color_filas_paciente, axis=1)
+        info["datos"] = st.data_editor(styled_df, use_container_width=True, hide_index=True)
         shared_data["lista_pacientes"][pk]["datos"] = info["datos"]
 
         st.markdown("<br>", unsafe_allow_html=True)
@@ -589,12 +599,23 @@ elif st.session_state["pagina"] == "seleccion_productos_enfermera":
             cols.insert(0, 'seleccion_enfermera')
             df_sol = df_sol[cols]
             
-        shared_data["solicitud_pedido"] = st.data_editor(df_sol, use_container_width=True, hide_index=True, num_rows="dynamic").to_dict(orient="records")
+        # Función para pintar la fila entera de verde pastel si la enfermera la selecciona
+        def color_filas_enfermera(row):
+            if row.get('seleccion_enfermera', False) == True:
+                return ['background-color: #bbf7d0; color: #14532d;'] * len(row)
+            return [''] * len(row)
+
+        styled_sol = df_sol.style.apply(color_filas_enfermera, axis=1)
+            
+        df_edited = st.data_editor(styled_sol, use_container_width=True, hide_index=True, num_rows="dynamic")
+        shared_data["solicitud_pedido"] = df_edited.to_dict(orient="records")
+        
         if st.button("🚀 Solicitar Pedido Definitivo"):
             sel = [i for i in shared_data["solicitud_pedido"] if i.get("seleccion_enfermera")]
             for it in sel: shared_data["pedidos_definitivos"].append(it)
             shared_data["solicitud_pedido"] = [i for i in shared_data["solicitud_pedido"] if not i.get("seleccion_enfermera")]
             st.success("Enviado al farmacéutico."); time.sleep(1.5); st.rerun()
+            
     if st.button("⬅ Volver"): st.session_state["pagina"] = "inicio"; st.rerun()
 
 elif st.session_state["pagina"] == "solicitud_pedido_admin":
