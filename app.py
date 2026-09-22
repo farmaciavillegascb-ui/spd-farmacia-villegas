@@ -38,9 +38,10 @@ st.markdown("""
         100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } 
     }
     
-    /* Estilos fijos para Columna 1 (INICIO) y Columna 3 (BAJAS) */
+    /* Estilos fijos para botones de la cabecera (INICIO, SYNC y BAJAS) */
     [data-testid="column"]:nth-child(1) div.stButton > button { border-color: #0ea5e9 !important; color: #0284c7 !important; background-color: #f0f9ff !important; }
-    [data-testid="column"]:nth-child(3) div.stButton > button { border-color: #f59e0b !important; color: #d97706 !important; background-color: #fffbeb !important; }
+    [data-testid="column"]:nth-child(2) div.stButton > button { border-color: #10b981 !important; color: #047857 !important; background-color: #ecfdf5 !important; }
+    [data-testid="column"]:nth-child(4) div.stButton > button { border-color: #f59e0b !important; color: #d97706 !important; background-color: #fffbeb !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -231,6 +232,45 @@ if "rol_usuario" not in st.session_state: st.session_state["rol_usuario"] = None
 if "pagina" not in st.session_state: st.session_state["pagina"] = "inicio"
 if "paciente_seleccionado_key" not in st.session_state: st.session_state["paciente_seleccionado_key"] = None
 
+# Aumento a 1 HORA (3600 segundos) de inactividad
+TIEMPO_EXPIRACION = 3600  
+
+def obtener_parametro_url(nombre):
+    try: return st.query_params.get(nombre)
+    except AttributeError:
+        try:
+            params = st.experimental_get_query_params()
+            val = params.get(nombre)
+            return val[0] if val else None
+        except Exception: return None
+
+def establecer_parametro_url(nombre, valor):
+    try: st.query_params[nombre] = valor
+    except AttributeError:
+        try: st.experimental_set_query_params(**{nombre: valor})
+        except Exception: pass
+
+def limpiar_parametros_url():
+    try: st.query_params.clear()
+    except AttributeError:
+        try: st.experimental_set_query_params()
+        except Exception: pass
+
+if "sesiones_activas" not in shared_data: shared_data["sesiones_activas"] = {}
+token_url = obtener_parametro_url("session_token")
+
+if token_url and token_url in shared_data["sesiones_activas"]:
+    datos_sesion = shared_data["sesiones_activas"][token_url]
+    if time.time() - datos_sesion["ultimo_acceso"] < TIEMPO_EXPIRACION:
+        shared_data["sesiones_activas"][token_url]["ultimo_acceso"] = time.time()
+        st.session_state["usuario_autenticado"] = datos_sesion["usuario"]
+        st.session_state["rol_usuario"] = datos_sesion["rol"]
+    else:
+        del shared_data["sesiones_activas"][token_url]
+        limpiar_parametros_url()
+        st.session_state["usuario_autenticado"] = None
+        st.session_state["rol_usuario"] = None
+
 # LOGIN
 if st.session_state["usuario_autenticado"] is None:
     col1, col2, col3 = st.columns([1, 1.5, 1])
@@ -242,6 +282,9 @@ if st.session_state["usuario_autenticado"] is None:
             clave_input = st.text_input("Clave de acceso", type="password")
             if st.form_submit_button("Iniciar Sesión", use_container_width=True):
                 if usuario_input in USUARIOS_VALIDOS and USUARIOS_VALIDOS[usuario_input]["clave"] == clave_input:
+                    nuevo_token = str(uuid.uuid4())
+                    shared_data["sesiones_activas"][nuevo_token] = {"usuario": usuario_input, "rol": USUARIOS_VALIDOS[usuario_input]["rol"], "ultimo_acceso": time.time()}
+                    establecer_parametro_url("session_token", nuevo_token)
                     st.session_state["usuario_autenticado"] = usuario_input
                     st.session_state["rol_usuario"] = USUARIOS_VALIDOS[usuario_input]["rol"]
                     st.session_state["pagina"] = "inicio"
@@ -249,14 +292,13 @@ if st.session_state["usuario_autenticado"] is None:
                 else: st.error("❌ Usuario o clave incorrectos.")
     st.stop()
 
-# CABECERA: 7 COLUMNAS INCLUYENDO "INICIO" AL PRINCIPIO
+# CABECERA: AHORA CON 8 COLUMNAS (INCLUYE SYNC)
 st.markdown('<div class="dashboard-header">', unsafe_allow_html=True)
 st.markdown('<div class="logo-container"><span style="font-size: 24px;">💊</span><span class="logo-title">SPD FARMACIA VILLEGAS</span></div>', unsafe_allow_html=True)
 
 rol_actual = st.session_state["rol_usuario"]
 st.markdown(f'<div class="status-bar"><span>Sistema activo <span style="color: #22c55e; font-size: 16px;">●</span></span><span>Usuario: <b>{st.session_state["usuario_autenticado"]}</b> ({rol_actual.upper()})</span></div>', unsafe_allow_html=True)
 
-# Lógica de conteos para alertas (rojo parpadeante)
 num_ped = len(shared_data["pedidos_definitivos"])
 num_prop = len(shared_data["solicitud_pedido"])
 num_inc = len(shared_data["incidencias_activas"])
@@ -271,39 +313,30 @@ else:
 txt_inc = f"INCIDENCIAS ({num_inc})" if num_inc > 0 else "INCIDENCIAS"
 alert_inc = (num_inc > 0)
 
-# Inyectar CSS dinámico en la Columna 4 (Pedidos) si hay alertas
+# Inyectar CSS dinámico si hay alertas (Columna 5 Pedidos, Columna 6 Incidencias en un array de 8)
 if alert_ped:
-    st.markdown("""
-    <style>
-        [data-testid="column"]:nth-child(4) div.stButton > button { background: linear-gradient(135deg, #ef4444, #dc2626) !important; color: white !important; border: 2px solid #fca5a5 !important; animation: pulse-subtle 1.8s infinite; }
-    </style>
-    """, unsafe_allow_html=True)
-
-# Inyectar CSS dinámico en la Columna 5 (Incidencias) si hay alertas
+    st.markdown("""<style>[data-testid="column"]:nth-child(5) div.stButton > button { background: linear-gradient(135deg, #ef4444, #dc2626) !important; color: white !important; border: 2px solid #fca5a5 !important; animation: pulse-subtle 1.8s infinite; }</style>""", unsafe_allow_html=True)
 if alert_inc:
-    st.markdown("""
-    <style>
-        [data-testid="column"]:nth-child(5) div.stButton > button { background: linear-gradient(135deg, #ef4444, #dc2626) !important; color: white !important; border: 2px solid #fca5a5 !important; animation: pulse-subtle 1.8s infinite; }
-    </style>
-    """, unsafe_allow_html=True)
+    st.markdown("""<style>[data-testid="column"]:nth-child(6) div.stButton > button { background: linear-gradient(135deg, #ef4444, #dc2626) !important; color: white !important; border: 2px solid #fca5a5 !important; animation: pulse-subtle 1.8s infinite; }</style>""", unsafe_allow_html=True)
 
-# Dibujar las 7 columnas
-col_inicio, col_alta, col_baja, col_ped, col_inc, col_user, col_logout = st.columns(7, gap="small")
+# 8 Columnas
+col_inicio, col_sync, col_alta, col_baja, col_ped, col_inc, col_user, col_logout = st.columns([1,1,1,1,1.2,1.2,1,1], gap="small")
 
 with col_inicio:
     if st.button("🏠 INICIO", key="btn_hdr_inicio", use_container_width=True):
-        st.session_state["pagina"] = "inicio"
-        st.rerun()
+        st.session_state["pagina"] = "inicio"; st.rerun()
+
+with col_sync:
+    if st.button("🔄 SYNC", key="btn_hdr_sync", use_container_width=True):
+        st.rerun()  # Actualiza la interfaz con los datos más recientes en memoria
 
 with col_alta:
     if st.button("ALTA", key="btn_hdr_alta", use_container_width=True):
-        st.session_state["pagina"] = "alta_paciente"
-        st.rerun()
+        st.session_state["pagina"] = "alta_paciente"; st.rerun()
 
 with col_baja:
     if st.button("🚨 BAJAS", key="btn_hdr_bajas", use_container_width=True):
-        st.session_state["pagina"] = "baja_paciente"
-        st.rerun()
+        st.session_state["pagina"] = "baja_paciente"; st.rerun()
 
 with col_ped:
     if st.button(txt_ped, key="btn_hdr_ped", use_container_width=True):
@@ -312,19 +345,16 @@ with col_ped:
 
 with col_inc:
     if st.button(txt_inc, key="btn_hdr_inc", use_container_width=True):
-        st.session_state["pagina"] = "incidencias"
-        st.rerun()
+        st.session_state["pagina"] = "incidencias"; st.rerun()
 
 with col_user:
     if st.button("USUARIOS", key="btn_hdr_usu", use_container_width=True):
-        st.session_state["pagina"] = "gestion_usuarios"
-        st.rerun()
+        st.session_state["pagina"] = "gestion_usuarios"; st.rerun()
 
 with col_logout:
     if st.button("SALIR", key="btn_hdr_out", use_container_width=True):
-        st.session_state["usuario_autenticado"] = None
-        st.session_state["pagina"] = "inicio"
-        st.rerun()
+        if token_url in shared_data["sesiones_activas"]: del shared_data["sesiones_activas"][token_url]
+        limpiar_parametros_url(); st.session_state["usuario_autenticado"] = None; st.session_state["pagina"] = "inicio"; st.rerun()
 
 st.markdown('</div>', unsafe_allow_html=True)
 
@@ -419,13 +449,11 @@ elif st.session_state["pagina"] == "baja_paciente":
                 st.success(f"✅ ¡{parsed['farmaco']} añadido correctamente!")
 
         if not st.session_state["df_devolucion"].empty:
-            # BOTÓN PARA ELIMINAR EL ÚLTIMO MEDICAMENTO ESCANEADO
             if st.button("🗑️ Eliminar último escaneo", use_container_width=False):
                 st.session_state["df_devolucion"] = st.session_state["df_devolucion"].iloc[:-1]
                 st.rerun()
             
             st.markdown("##### 📋 Listado de Devolución (Edite la columna 'Pastillas restantes')")
-            # num_rows="dynamic" permite borrar filas desde la tabla marcándolas y pulsando suprimir o la papelera
             st.session_state["df_devolucion"] = st.data_editor(
                 st.session_state["df_devolucion"], 
                 use_container_width=True, 
@@ -448,8 +476,7 @@ elif st.session_state["pagina"] == "baja_paciente":
 
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("⬅ Volver a Modalidades"):
-            st.session_state["baja_paso"] = "elegir_modalidad"
-            st.rerun()
+            st.session_state["baja_paso"] = "elegir_modalidad"; st.rerun()
 
 # ----------------------------------------------------
 # RESTO DE MÓDULOS
@@ -473,7 +500,7 @@ elif st.session_state["pagina"] == "alta_paciente":
                 }
                 st.success("¡Paciente dado de alta!")
                 st.session_state["df_alta_cargado"] = pd.DataFrame(columns=['Medicamento', 'CN', 'Posologia', 'Ultima Entrega'])
-                time.sleep(1); st.rerun()
+                time.sleep(1.5); st.rerun()
     if st.button("⬅ Volver"): st.session_state["pagina"] = "inicio"; st.rerun()
 
 elif st.session_state["pagina"] == "lista_pacientes":
@@ -490,12 +517,19 @@ elif st.session_state["pagina"] == "detalle_paciente":
     if info:
         st.markdown(f"<h3 style='text-align: center;'>Paciente: {info['nombre']}</h3>", unsafe_allow_html=True)
         
-        # Guardamos la edición del dataframe en session/shared context
-        info["datos"] = st.data_editor(info["datos"], use_container_width=True, hide_index=True)
+        # REORDENACIÓN DE COLUMNAS (Pedido e Incidencia a la izquierda)
+        df_pac = info["datos"]
+        cols = df_pac.columns.tolist()
+        for col_name in ['Incidencia', 'Pedido']:
+            if col_name in cols:
+                cols.remove(col_name)
+        new_cols = ['Pedido', 'Incidencia'] + cols
+        new_cols = [c for c in new_cols if c in df_pac.columns] # Prevenir errores
+
+        info["datos"] = st.data_editor(df_pac[new_cols], use_container_width=True, hide_index=True)
         shared_data["lista_pacientes"][pk]["datos"] = info["datos"]
 
         st.markdown("<br>", unsafe_allow_html=True)
-        # NUEVOS BOTONES DE ACCIÓN PARA LA FICHA
         col_btn_ped, col_btn_inc = st.columns(2)
         
         with col_btn_ped:
@@ -504,15 +538,14 @@ elif st.session_state["pagina"] == "detalle_paciente":
                 if not df_pedidos.empty:
                     for _, row in df_pedidos.iterrows():
                         item = {
+                            "seleccion_enfermera": False,
                             "ref": info["ref"],
                             "paciente": info["nombre"],
                             "medicamento": row.get("Medicamento", ""),
                             "cn": row.get("CN", ""),
-                            "posologia": row.get("Posologia", ""),
-                            "seleccion_enfermera": False
+                            "posologia": row.get("Posologia", "")
                         }
                         shared_data["solicitud_pedido"].append(item)
-                    # Desmarcamos las casillas una vez enviado
                     info["datos"]["Pedido"] = False
                     shared_data["lista_pacientes"][pk]["datos"] = info["datos"]
                     st.success("¡Medicamentos enviados a la bandeja de Pedidos!")
@@ -533,7 +566,6 @@ elif st.session_state["pagina"] == "detalle_paciente":
                             "descripcion": "Generada automáticamente desde ficha"
                         }
                         shared_data["incidencias_activas"].append(incidencia)
-                    # Desmarcamos las casillas una vez enviado
                     info["datos"]["Incidencia"] = False
                     shared_data["lista_pacientes"][pk]["datos"] = info["datos"]
                     st.success("¡Incidencia registrada correctamente!")
@@ -549,17 +581,32 @@ elif st.session_state["pagina"] == "seleccion_productos_enfermera":
     if not shared_data["solicitud_pedido"]: st.info("No hay propuestas.")
     else:
         df_sol = pd.DataFrame(shared_data["solicitud_pedido"])
+        
+        # REORDENACIÓN DE COLUMNAS (seleccion_enfermera a la izquierda)
+        if 'seleccion_enfermera' in df_sol.columns:
+            cols = df_sol.columns.tolist()
+            cols.remove('seleccion_enfermera')
+            cols.insert(0, 'seleccion_enfermera')
+            df_sol = df_sol[cols]
+            
         shared_data["solicitud_pedido"] = st.data_editor(df_sol, use_container_width=True, hide_index=True, num_rows="dynamic").to_dict(orient="records")
         if st.button("🚀 Solicitar Pedido Definitivo"):
             sel = [i for i in shared_data["solicitud_pedido"] if i.get("seleccion_enfermera")]
             for it in sel: shared_data["pedidos_definitivos"].append(it)
             shared_data["solicitud_pedido"] = [i for i in shared_data["solicitud_pedido"] if not i.get("seleccion_enfermera")]
-            st.success("Enviado al farmacéutico."); time.sleep(1); st.rerun()
+            st.success("Enviado al farmacéutico."); time.sleep(1.5); st.rerun()
     if st.button("⬅ Volver"): st.session_state["pagina"] = "inicio"; st.rerun()
 
 elif st.session_state["pagina"] == "solicitud_pedido_admin":
     st.markdown("<h2 style='text-align: center;'>📦 PROPUESTA (ENVIADO A ENFERMERÍA)</h2>", unsafe_allow_html=True)
-    if shared_data["solicitud_pedido"]: st.dataframe(pd.DataFrame(shared_data["solicitud_pedido"]), use_container_width=True, hide_index=True)
+    if shared_data["solicitud_pedido"]: 
+        df_sol = pd.DataFrame(shared_data["solicitud_pedido"])
+        if 'seleccion_enfermera' in df_sol.columns:
+            cols = df_sol.columns.tolist()
+            cols.remove('seleccion_enfermera')
+            cols.insert(0, 'seleccion_enfermera')
+            df_sol = df_sol[cols]
+        st.dataframe(df_sol, use_container_width=True, hide_index=True)
     else: st.info("Vacío.")
     if st.button("⬅ Volver"): st.session_state["pagina"] = "inicio"; st.rerun()
 
@@ -620,7 +667,7 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
         with col_act:
             if st.button("📌 Actualizar Última Entrega y Limpiar", use_container_width=True):
                 shared_data["pedidos_definitivos"] = []
-                st.success("¡Fechas actualizadas!"); time.sleep(1); st.rerun()
+                st.success("¡Fechas actualizadas!"); time.sleep(1.5); st.rerun()
     if st.button("⬅ Volver al Menú"): st.session_state["pagina"] = "inicio"; st.rerun()
 
 elif st.session_state["pagina"] == "incidencias":
