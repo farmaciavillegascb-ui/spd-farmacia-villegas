@@ -103,13 +103,11 @@ def traducir_datamatrix(raw_code, bd_medicamentos):
     clean = str(raw_code).replace('\x1D', '<GS>')
     
     try:
-        # 1. AI (712) Código Nacional de Reembolso (6 dígitos)
         if '712' in clean:
             idx = clean.find('712')
             if len(clean) >= idx + 9:
                 res['cn'] = clean[idx+3 : idx+9].strip()
                 
-        # 2. AI (01) GTIN (14 dígitos) - Fallback o extracción de CN
         if not res['cn'] and '01' in clean:
             idx = clean.find('01')
             if len(clean) >= idx + 16:
@@ -120,7 +118,6 @@ def traducir_datamatrix(raw_code, bd_medicamentos):
         if not res['cn'] and len(clean) >= 6:
             res['cn'] = clean[-6:].strip()
 
-        # 3. AI (17) Fecha de Caducidad (AAMMDD)
         if '17' in clean:
             idx = clean.find('17')
             if len(clean) >= idx + 8:
@@ -131,7 +128,6 @@ def traducir_datamatrix(raw_code, bd_medicamentos):
                     res['caducidad'] = f"{dd}/{mm}/20{yy}"
         if not res['caducidad']: res['caducidad'] = "31/12/2028"
 
-        # 4. AI (10) Número de Lote (Variable)
         idx_10 = clean.find('10')
         if idx_10 != -1:
             sub = clean[idx_10 + 2:]
@@ -143,7 +139,6 @@ def traducir_datamatrix(raw_code, bd_medicamentos):
                 res['lote'] = sub[:20].strip()
         if not res['lote']: res['lote'] = "LOTE01"
 
-        # 5. AI (21) Número de Serie (Variable)
         idx_21 = clean.find('21')
         if idx_21 != -1:
             sub = clean[idx_21 + 2:]
@@ -295,7 +290,7 @@ if st.session_state["usuario_autenticado"] is None:
                 else: st.error("❌ Usuario o clave incorrectos.")
     st.stop()
 
-# CABECERA (Con botón de BAJAS DE PACIENTES)
+# CABECERA (Con el botón BAJAS asegurado y visible)
 st.markdown('<div class="dashboard-header">', unsafe_allow_html=True)
 st.markdown('<div class="logo-container"><span style="font-size: 24px;">💊</span><span class="logo-title">SPD FARMACIA VILLEGAS</span></div>', unsafe_allow_html=True)
 
@@ -310,10 +305,12 @@ with col_alta:
         if st.button(f"ALTA ({num_altas})" if num_altas > 0 else "ALTA", key="btn_alta", use_container_width=True): st.session_state["pagina"] = "alta_paciente"; st.rerun()
         if num_altas > 0: st.markdown('</div>', unsafe_allow_html=True)
     else: st.markdown('<div style="height: 48px;"></div>', unsafe_allow_html=True)
+
 with col_baja:
     if tiene_permiso(rol_actual, "bajas"):
-        if st.button("BAJAS", key="btn_bajas", use_container_width=True): st.session_state["pagina"] = "baja_paciente"; st.rerun()
+        if st.button("BAJAS", key="btn_bajas_sup", use_container_width=True): st.session_state["pagina"] = "baja_paciente"; st.rerun()
     else: st.markdown('<div style="height: 48px;"></div>', unsafe_allow_html=True)
+
 with col_ped:
     if rol_actual == "admin" and tiene_permiso(rol_actual, "pedidos_def"):
         if len(shared_data["pedidos_definitivos"]) > 0: st.markdown('<div class="alerta-wrapper alerta-activa">', unsafe_allow_html=True)
@@ -324,6 +321,7 @@ with col_ped:
         if st.button("PROPUESTA", key="btn_sol_enf", use_container_width=True): st.session_state["pagina"] = "seleccion_productos_enfermera"; st.rerun()
         if len(shared_data["solicitud_pedido"]) > 0: st.markdown('</div>', unsafe_allow_html=True)
     else: st.markdown('<div style="height: 48px;"></div>', unsafe_allow_html=True)
+
 with col_inc:
     if tiene_permiso(rol_actual, "incidencias"):
         num_inc = len(shared_data["incidencias_activas"])
@@ -331,10 +329,12 @@ with col_inc:
         if st.button(f"INCIDENCIAS ({num_inc})" if num_inc > 0 else "INCIDENCIAS", key="btn_incidencias", use_container_width=True): st.session_state["pagina"] = "incidencias"; st.rerun()
         if num_inc > 0: st.markdown('</div>', unsafe_allow_html=True)
     else: st.markdown('<div style="height: 48px;"></div>', unsafe_allow_html=True)
+
 with col_user:
     if tiene_permiso(rol_actual, "usuarios"):
         if st.button("USUARIOS", key="btn_usu", use_container_width=True): st.session_state["pagina"] = "gestion_usuarios"; st.rerun()
     else: st.markdown('<div style="height: 48px;"></div>', unsafe_allow_html=True)
+
 with col_logout:
     if st.button("SALIR", key="btn_logout", use_container_width=True):
         if token_url in shared_data["sesiones_activas"]: del shared_data["sesiones_activas"][token_url]
@@ -371,7 +371,7 @@ if st.session_state["pagina"] == "inicio":
                 if st.button("📦 **SELECCIÓN DE ENFERMERÍA**", use_container_width=True): st.session_state["pagina"] = "seleccion_productos_enfermera"; st.rerun()
 
 # ----------------------------------------------------
-# NUEVO MÓDULO: BAJAS DE PACIENTES CON/SIN DEVOLUCIÓN
+# MÓDULO: BAJAS DE PACIENTES CON/SIN DEVOLUCIÓN
 # ----------------------------------------------------
 elif st.session_state["pagina"] == "baja_paciente":
     if not tiene_permiso(rol_actual, "bajas"): st.error("Sin permiso."); st.stop()
@@ -442,7 +442,7 @@ elif st.session_state["pagina"] == "baja_paciente":
                     'Lote': parsed['lote'],
                     'Caducidad': parsed['caducidad'],
                     'Serie': parsed['serie'],
-                    'Pastillas restantes': 0 # Casilla editable para la cantidad
+                    'Pastillas restantes': 0
                 }
                 st.session_state["df_devolucion"] = pd.concat([st.session_state["df_devolucion"], pd.DataFrame([nuevo_reg])], ignore_index=True)
                 st.success(f"✅ ¡{parsed['farmaco']} añadido correctamente! Indique las pastillas en la tabla.")
