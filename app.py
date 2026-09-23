@@ -729,7 +729,6 @@ elif st.session_state["pagina"] == "detalle_paciente":
             col_btn_ped, col_btn_inc = st.columns(2)
             
             with col_btn_ped:
-                # Solo el farmacéutico (admin) puede enviar a propuesta de pedido desde la ficha del paciente
                 if rol_actual == "admin":
                     if st.button("📦 Enviar a Propuesta de Pedido", use_container_width=True):
                         df_pedidos = info["datos"][info["datos"]["Pedido"] == True]
@@ -790,12 +789,15 @@ elif st.session_state["pagina"] == "seleccion_productos_enfermera":
     else:
         df_sol = pd.DataFrame(shared_data["solicitud_pedido"])
         if 'seleccion_enfermera' not in df_sol.columns:
-            df_sol.insert(0, 'seleccion_enfermera', False)
-        else:
-            cols = df_sol.columns.tolist()
-            cols.remove('seleccion_enfermera')
-            cols.insert(0, 'seleccion_enfermera')
-            df_sol = df_sol[cols]
+            df_sol['seleccion_enfermera'] = False
+        
+        # Forzar tipo booleano estricto para evitar problemas de clics
+        df_sol['seleccion_enfermera'] = df_sol['seleccion_enfermera'].astype(bool)
+
+        cols = df_sol.columns.tolist()
+        cols.remove('seleccion_enfermera')
+        cols.insert(0, 'seleccion_enfermera')
+        df_sol = df_sol[cols]
             
         if "df_propuesta_enfermera" not in st.session_state or len(st.session_state["df_propuesta_enfermera"]) != len(shared_data["solicitud_pedido"]):
             st.session_state["df_propuesta_enfermera"] = df_sol
