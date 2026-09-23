@@ -685,6 +685,9 @@ elif st.session_state["pagina"] == "alta_paciente":
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("⬅ Volver", use_container_width=True): st.session_state["pagina"] = "inicio"; st.rerun()
 
+# ----------------------------------------------------
+# MÓDULO: LISTA DE PACIENTES CON BUSCADOR MÓVIL
+# ----------------------------------------------------
 elif st.session_state["pagina"] == "lista_pacientes":
     if "pacientes" not in permisos_usuario:
         st.error("⛔ ACCESO RESTRINGIDO")
@@ -692,11 +695,29 @@ elif st.session_state["pagina"] == "lista_pacientes":
         st.stop()
         
     st.markdown("<h2 style='text-align: center; color: #1e293b; font-weight: 800;'>PACIENTES</h2>", unsafe_allow_html=True)
-    for pk in list(lista_pacientes.keys()):
-        if st.button(pk, key=f"p_{pk}", use_container_width=True):
-            st.session_state["paciente_seleccionado_key"] = pk
-            st.session_state["pagina"] = "detalle_paciente"; st.rerun()
-    if st.button("⬅ Volver"): st.session_state["pagina"] = "inicio"; st.rerun()
+    
+    # Barra de búsqueda táctil / móvil friendly
+    busqueda_paciente = st.text_input("🔍 Buscar paciente (por nombre, código o CIP):", value="", placeholder="Escribe para buscar...", key="input_busq_paciente")
+    
+    # Filtrar pacientes según el texto introducido
+    pacientes_filtrados = {}
+    for pk, info in list(lista_pacientes.items()):
+        termino = busqueda_paciente.lower()
+        if termino in pk.lower() or termino in info['nombre'].lower() or termino in info['ref'].lower() or termino in str(info.get('cip', '')).lower():
+            pacientes_filtrados[pk] = info
+            
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    if not pacientes_filtrados:
+        st.info("❌ No se encontraron pacientes que coincidan con la búsqueda.")
+    else:
+        for pk in list(pacientes_filtrados.keys()):
+            if st.button(pk, key=f"p_{pk}", use_container_width=True):
+                st.session_state["paciente_seleccionado_key"] = pk
+                st.session_state["pagina"] = "detalle_paciente"; st.rerun()
+                
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.button("⬅ Volver al Menú Principal", use_container_width=True): st.session_state["pagina"] = "inicio"; st.rerun()
 
 elif st.session_state["pagina"] == "detalle_paciente":
     if "pacientes" not in permisos_usuario: st.stop()
