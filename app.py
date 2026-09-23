@@ -405,7 +405,7 @@ with col_baja:
 
 with col_ped:
     if st.button(txt_ped, key="btn_hdr_ped", use_container_width=True):
-        st.session_state["pagina"] = "pedidos_definitivos_admin" if rol_actual == "admin" else "seleccion_productos_enfermera"
+        st.session_state["pagina"] = "pedidos_definitivos_admin" if rol_actual == "admin" else "solicitud_pedido_admin"
         st.rerun()
 
 with col_inc:
@@ -437,10 +437,10 @@ if st.session_state["pagina"] == "inicio":
     c3, c4 = st.columns(2, gap="large")
     with c3:
         st.markdown(f'<div style="background: #fefce8; padding: 22px; border-radius: 16px; border: 1px solid #fef08a; margin-bottom: 10px;"><h4 style="color: #713f12; margin-top: 0;">🚚 PROPUESTA DE PEDIDO ({len(shared_data["solicitud_pedido"])})</h4><p style="color: #334155; font-size: 14px; margin-bottom: 0;">Seguimiento de propuestas con enfermería.</p></div>', unsafe_allow_html=True)
-        if st.button("📦 **VER PROPUESTA DE PEDIDO**", use_container_width=True): st.session_state["pagina"] = "solicitud_pedido_admin" if rol_actual == "admin" else "seleccion_productos_enfermera"; st.rerun()
+        if st.button("📦 **VER PROPUESTA DE PEDIDO**", use_container_width=True): st.session_state["pagina"] = "solicitud_pedido_admin"; st.rerun()
     with c4:
         st.markdown(f'<div style="background: #f0fdf4; padding: 22px; border-radius: 16px; border: 1px solid #bbf7d0; margin-bottom: 10px;"><h4 style="color: #14532d; margin-top: 0;">📄 PEDIDO DEFINITIVO ({len(shared_data["pedidos_definitivos"])})</h4><p style="color: #334155; font-size: 14px; margin-bottom: 0;">Validación con DataMatrix y albaranes PDF.</p></div>', unsafe_allow_html=True)
-        if st.button("🛒 **VER PEDIDOS DEFINITIVOS**", use_container_width=True): st.session_state["pagina"] = "pedidos_definitivos_admin" if rol_actual == "admin" else "seleccion_productos_enfermera"; st.rerun()
+        if st.button("🛒 **VER PEDIDOS DEFINITIVOS**", use_container_width=True): st.session_state["pagina"] = "pedidos_definitivos_admin"; st.rerun()
 
 # ----------------------------------------------------
 # MÓDULO: BAJAS DE PACIENTES CON/SIN DEVOLUCIÓN
@@ -696,7 +696,6 @@ elif st.session_state["pagina"] == "detalle_paciente":
                     if not df_pedidos.empty:
                         for _, row in df_pedidos.iterrows():
                             item = {
-                                "seleccion_enfermera": False,
                                 "ref": info["ref"],
                                 "paciente": info["nombre"],
                                 "medicamento": row.get("Medicamento", ""),
@@ -709,7 +708,7 @@ elif st.session_state["pagina"] == "detalle_paciente":
                             shared_data["solicitud_pedido"].append(item)
                         info["datos"]["Pedido"] = False
                         shared_data["lista_pacientes"][pk]["datos"] = info["datos"]
-                        st.success("¡Medicamentos enviados a la bandeja de Pedidos!")
+                        st.success("¡Medicamentos enviados a la bandeja de Propuesta de Pedido!")
                         time.sleep(1.5); st.rerun()
                     else:
                         st.warning("Marca la casilla 'Pedido' en algún medicamento primero.")
@@ -740,49 +739,67 @@ elif st.session_state["pagina"] == "detalle_paciente":
         st.session_state["pagina"] = "lista_pacientes"
         st.rerun()
 
-elif st.session_state["pagina"] == "seleccion_productos_enfermera":
-    st.markdown("<h2 style='text-align: center;'>📦 PROPUESTA DE PEDIDO</h2>", unsafe_allow_html=True)
-    if not shared_data["solicitud_pedido"]: st.info("No hay propuestas.")
-    else:
-        df_sol = pd.DataFrame(shared_data["solicitud_pedido"])
-        if 'seleccion_enfermera' in df_sol.columns:
-            cols = df_sol.columns.tolist()
-            cols.remove('seleccion_enfermera')
-            cols.insert(0, 'seleccion_enfermera')
-            df_sol = df_sol[cols]
-            
-        df_edited = st.data_editor(
-            df_sol, 
-            use_container_width=True, 
-            hide_index=True, 
-            num_rows="dynamic", 
-            key="editor_enfermera_propuesta",
-            column_config={
-                "seleccion_enfermera": st.column_config.CheckboxColumn("Seleccionar", default=False)
-            }
-        )
-        shared_data["solicitud_pedido"] = df_edited.to_dict(orient="records")
-        
-        if st.button("🚀 Solicitar Pedido Definitivo"):
-            sel = [i for i in shared_data["solicitud_pedido"] if i.get("seleccion_enfermera")]
-            for it in sel: shared_data["pedidos_definitivos"].append(it)
-            shared_data["solicitud_pedido"] = [i for i in shared_data["solicitud_pedido"] if not i.get("seleccion_enfermera")]
-            st.success("Enviado al farmacéutico."); time.sleep(1.5); st.rerun()
-            
-    if st.button("⬅ Volver"): st.session_state["pagina"] = "inicio"; st.rerun()
-
 elif st.session_state["pagina"] == "solicitud_pedido_admin":
-    st.markdown("<h2 style='text-align: center;'>📦 PROPUESTA (ENVIADO A ENFERMERÍA)</h2>", unsafe_allow_html=True)
-    if shared_data["solicitud_pedido"]: 
-        df_sol = pd.DataFrame(shared_data["solicitud_pedido"])
-        if 'seleccion_enfermera' in df_sol.columns:
-            cols = df_sol.columns.tolist()
-            cols.remove('seleccion_enfermera')
-            cols.insert(0, 'seleccion_enfermera')
-            df_sol = df_sol[cols]
-        st.dataframe(df_sol, use_container_width=True, hide_index=True)
-    else: st.info("Vacío.")
-    if st.button("⬅ Volver"): st.session_state["pagina"] = "inicio"; st.rerun()
+    if rol_actual != "admin":
+        st.markdown("<h2 style='text-align: center; color: #ef4444;'>⛔ ACCESO RESTRINGIDO</h2>", unsafe_allow_html=True)
+        st.warning("La gestión y solicitud de pedidos definitivos a partir de la propuesta solo puede ser realizada por el rol de farmacéutico (administrador).")
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("⬅ Volver al Inicio", use_container_width=True):
+            st.session_state["pagina"] = "inicio"; st.rerun()
+    else:
+        st.markdown("<h2 style='text-align: center; color: #1e293b; font-weight: 800;'>📦 GESTIÓN DE PROPUESTA DE PEDIDO</h2>", unsafe_allow_html=True)
+        if not shared_data["solicitud_pedido"]: 
+            st.info("No hay propuestas de pedido pendientes en este momento.")
+        else:
+            # Inicializar o mantener la caché en session_state para evitar pérdida de estado en los checks
+            if "df_propuesta_admin" not in st.session_state or len(st.session_state["df_propuesta_admin"]) != len(shared_data["solicitud_pedido"]):
+                df_init = pd.DataFrame(shared_data["solicitud_pedido"])
+                if 'seleccion_farmaceutico' not in df_init.columns:
+                    df_init.insert(0, 'seleccion_farmaceutico', False)
+                st.session_state["df_propuesta_admin"] = df_init
+
+            df_edited = st.data_editor(
+                st.session_state["df_propuesta_admin"], 
+                use_container_width=True, 
+                hide_index=True, 
+                num_rows="dynamic",
+                key="editor_propuesta_farmacia",
+                column_config={
+                    "seleccion_farmaceutico": st.column_config.CheckboxColumn("Seleccionar", default=False)
+                }
+            )
+            st.session_state["df_propuesta_admin"] = df_edited
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("🚀 Solicitar Pedido Definitivo", use_container_width=True):
+                df_sel = df_edited[df_edited["seleccion_farmaceutico"] == True]
+                if not df_sel.empty:
+                    for _, row in df_sel.iterrows():
+                        item = {
+                            "ref": row.get("ref", ""),
+                            "paciente": row.get("paciente", ""),
+                            "medicamento": row.get("medicamento", ""),
+                            "cn": row.get("cn", ""),
+                            "posologia": row.get("posologia", ""),
+                            "datamatrix": "",
+                            "lote": "",
+                            "caducidad": ""
+                        }
+                        shared_data["pedidos_definitivos"].append(item)
+                    
+                    # Mantener los no seleccionados en solicitud_pedido
+                    restantes = df_edited[df_edited["seleccion_farmaceutico"] != True].drop(columns=['seleccion_farmaceutico'], errors='ignore')
+                    shared_data["solicitud_pedido"] = restantes.to_dict(orient="records")
+                    if "df_propuesta_admin" in st.session_state:
+                        del st.session_state["df_propuesta_admin"]
+                        
+                    st.success("¡Pedido definitivo solicitado con éxito!")
+                    time.sleep(1.5); st.rerun()
+                else:
+                    st.warning("⚠️ Debe marcar al menos un medicamento en la columna 'Seleccionar'.")
+                    
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("⬅ Volver"): st.session_state["pagina"] = "inicio"; st.rerun()
 
 elif st.session_state["pagina"] == "pedidos_definitivos_admin":
     st.markdown("<h2 style='text-align: center; color: #1e293b; font-weight: 800;'>🛒 PEDIDOS DEFINITIVOS Y ESCÁNER DATAMATRIX</h2>", unsafe_allow_html=True)
@@ -868,7 +885,6 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
         with col_act:
             if st.button("📌 Actualizar Última Entrega y Limpiar", use_container_width=True):
                 fecha_hoy = datetime.now().strftime("%d/%m/%Y")
-                # Actualizar la columna 'Ultima Entrega' en cada paciente correspondiente
                 for item in shared_data["pedidos_definitivos"]:
                     ref_item = str(item.get("ref", ""))
                     med_item = str(item.get("medicamento", ""))
