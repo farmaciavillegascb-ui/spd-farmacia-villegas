@@ -186,7 +186,8 @@ def generar_albaran_devolucion_pdf(nombre_paciente, ref_paciente, lista_devoluci
     pdf.ln(5)
     
     pdf.set_font("Arial", 'B', 9)
-    col_widths = [55, 65, 20, 35, 25, 30, 25] 
+    # Anchos ampliados y distribuidos para evitar solapamientos
+    col_widths = [65, 80, 22, 38, 28, 25, 25] 
     headers = ["Medicamento", "Descripcion", "CN", "Lote", "Caducidad", "Serie", "Restantes"]
     for i in range(len(headers)):
         pdf.cell(col_widths[i], 8, limpiar_texto_pdf(headers[i]), border=1, align='C')
@@ -194,8 +195,8 @@ def generar_albaran_devolucion_pdf(nombre_paciente, ref_paciente, lista_devoluci
     
     pdf.set_font("Arial", '', 8)
     for row in lista_devolucion:
-        pdf.cell(col_widths[0], 8, limpiar_texto_pdf(str(row.get('Medicamento', ''))[:30]), border=1)
-        pdf.cell(col_widths[1], 8, limpiar_texto_pdf(str(row.get('Descripción', ''))[:40]), border=1)
+        pdf.cell(col_widths[0], 8, limpiar_texto_pdf(str(row.get('Medicamento', ''))[:40]), border=1)
+        pdf.cell(col_widths[1], 8, limpiar_texto_pdf(str(row.get('Descripción', ''))[:50]), border=1)
         pdf.cell(col_widths[2], 8, limpiar_texto_pdf(str(row.get('CN', ''))[:10]), border=1, align='C')
         pdf.cell(col_widths[3], 8, limpiar_texto_pdf(str(row.get('Lote', ''))[:18]), border=1, align='C')
         pdf.cell(col_widths[4], 8, limpiar_texto_pdf(str(row.get('Caducidad', ''))[:10]), border=1, align='C')
@@ -583,7 +584,6 @@ elif st.session_state["pagina"] == "detalle_paciente":
             
             df_mostrar = df_pac[new_cols].copy()
 
-            # Función para sombrear filas: Verde pastel si pedido, Rojo pastel si incidencia
             def color_filas_paciente(row):
                 if row.get('Incidencia', False) == True:
                     return ['background-color: #fecaca; color: #7f1d1d;'] * len(row) 
@@ -593,10 +593,8 @@ elif st.session_state["pagina"] == "detalle_paciente":
 
             styled_df = df_mostrar.style.apply(color_filas_paciente, axis=1)
 
-            # Editor fluido aplicando colores condicionales y clave única
             df_edited_result = st.data_editor(styled_df, use_container_width=True, hide_index=True, key=f"editor_paciente_{pk}")
             
-            # Asegurar exclusividad mutua entre Pedido e Incidencia en la misma fila
             cambio_realizado = False
             for idx in range(len(df_edited_result)):
                 p_val = df_edited_result.loc[idx, 'Pedido'] if 'Pedido' in df_edited_result.columns else False
@@ -772,7 +770,8 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
             pdf.ln(5)
             
             pdf.set_font("Arial", 'B', 9)
-            col_widths = [15, 55, 65, 20, 20, 45, 25, 25] 
+            # Anchos ampliados y distribuidos para los albaranes de entrega
+            col_widths = [20, 60, 80, 22, 22, 45, 25, 25] 
             headers = ["Ref.", "Paciente", "Medicamento", "C.N.", "Posologia", "DataMatrix", "Lote", "Caducidad"]
             for i in range(len(headers)):
                 pdf.cell(col_widths[i], 8, limpiar_texto_pdf(headers[i]), border=1, align='C')
@@ -780,11 +779,11 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
             
             pdf.set_font("Arial", '', 8)
             for row in shared_data["pedidos_definitivos"]:
-                pdf.cell(col_widths[0], 8, limpiar_texto_pdf(str(row.get('ref', ''))[:8]), border=1)
-                pdf.cell(col_widths[1], 8, limpiar_texto_pdf(str(row.get('paciente', ''))[:35]), border=1)
-                pdf.cell(col_widths[2], 8, limpiar_texto_pdf(str(row.get('medicamento', ''))[:45]), border=1)
+                pdf.cell(col_widths[0], 8, limpiar_texto_pdf(str(row.get('ref', ''))[:10]), border=1)
+                pdf.cell(col_widths[1], 8, limpiar_texto_pdf(str(row.get('paciente', ''))[:40]), border=1)
+                pdf.cell(col_widths[2], 8, limpiar_texto_pdf(str(row.get('medicamento', ''))[:50]), border=1)
                 pdf.cell(col_widths[3], 8, limpiar_texto_pdf(str(row.get('cn', ''))[:10]), border=1, align='C')
-                pdf.cell(col_widths[4], 8, limpiar_texto_pdf(str(row.get('posologia', ''))[:12]), border=1, align='C')
+                pdf.cell(col_widths[4], 8, limpiar_texto_pdf(str(row.get('posologia', ''))[:15]), border=1, align='C')
                 pdf.cell(col_widths[5], 8, limpiar_texto_pdf(str(row.get('datamatrix', ''))[:35]), border=1)
                 pdf.cell(col_widths[6], 8, limpiar_texto_pdf(str(row.get('lote', ''))[:15]), border=1, align='C')
                 pdf.cell(col_widths[7], 8, limpiar_texto_pdf(str(row.get('caducidad', ''))[:12]), border=1, align='C')
