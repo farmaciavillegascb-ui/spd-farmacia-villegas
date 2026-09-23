@@ -15,7 +15,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Estilos CSS avanzados y responsivos para móviles
+# Estilos CSS avanzados y responsivos para móviles y selección táctil
 st.markdown("""
 <style>
     .block-container { padding-top: 0.5rem !important; padding-bottom: 2rem !important; padding-left: 1rem !important; padding-right: 1rem !important; }
@@ -523,7 +523,7 @@ elif st.session_state["pagina"] == "lista_pacientes":
     if st.button("⬅ Volver", use_container_width=True): st.session_state["pagina"] = "inicio"; st.rerun()
 
 # ----------------------------------------------------
-# FICHA DE PACIENTE (CON CAMBIO DE COLOR EN FILA COMPLETA Y BLOQUEO DE EDICIÓN)
+# FICHA DE PACIENTE (CON CAMBIO DE COLOR EN FILA COMPLETA)
 # ----------------------------------------------------
 elif st.session_state["pagina"] == "detalle_paciente":
     if "pacientes" not in permisos_usuario: st.stop()
@@ -572,12 +572,12 @@ elif st.session_state["pagina"] == "detalle_paciente":
             if 'Pedido' in df_mostrar.columns: df_mostrar['Pedido'] = df_mostrar['Pedido'].astype(bool)
             if 'Incidencia' in df_mostrar.columns: df_mostrar['Incidencia'] = df_mostrar['Incidencia'].astype(bool)
 
-            # FUNCIÓN PARA ILUMINAR FILA COMPLETA EN VERDE (Pedido) O ROJO (Incidencia)
+            # FUNCIÓN CORREGIDA SIN "!important" PARA QUE STREAMLIT NO ROMPA EL COLOR Y SE VEA BLANCO
             def color_filas_paciente(row):
                 if row.get('Incidencia', False) == True:
-                    return ['background-color: #fecaca !important; color: #7f1d1d !important; font-weight: bold !important;'] * len(row) 
+                    return ['background-color: #fecaca; color: #7f1d1d; font-weight: bold;'] * len(row) 
                 elif row.get('Pedido', False) == True:
-                    return ['background-color: #bbf7d0 !important; color: #14532d !important; font-weight: bold !important;'] * len(row) 
+                    return ['background-color: #bbf7d0; color: #14532d; font-weight: bold;'] * len(row) 
                 return [''] * len(row)
 
             # ESTILOS AL DATAFRAME
@@ -660,7 +660,6 @@ elif st.session_state["pagina"] == "seleccion_productos_enfermera":
     if not shared_data["solicitud_pedido"]: 
         st.info("No hay propuestas pendientes.")
     else:
-        # Cargar dataframe de sesión para poder captar cambios inmediatos
         if "df_propuesta_enfermera" not in st.session_state or len(st.session_state["df_propuesta_enfermera"]) != len(shared_data["solicitud_pedido"]):
             df_sol = pd.DataFrame(shared_data["solicitud_pedido"])
             if 'seleccion_enfermera' not in df_sol.columns: df_sol['seleccion_enfermera'] = False
@@ -671,12 +670,11 @@ elif st.session_state["pagina"] == "seleccion_productos_enfermera":
 
         def color_propuesta(row):
             if row.get('seleccion_enfermera', False) == True:
-                return ['background-color: #bbf7d0 !important; color: #14532d !important; font-weight: bold !important;'] * len(row)
+                return ['background-color: #bbf7d0; color: #14532d; font-weight: bold;'] * len(row)
             return [''] * len(row)
             
         styled_sol = st.session_state["df_propuesta_enfermera"].style.apply(color_propuesta, axis=1)
         
-        # Bloquear todo excepto el check
         col_config_prop = {}
         for col in st.session_state["df_propuesta_enfermera"].columns:
             if col != 'seleccion_enfermera': col_config_prop[col] = st.column_config.TextColumn(disabled=True)
@@ -688,7 +686,6 @@ elif st.session_state["pagina"] == "seleccion_productos_enfermera":
             column_config=col_config_prop
         )
         
-        # Si tocan el checkbox, guardar estado y forzar pintado de fila verde al instante
         if not df_edited_sol.equals(st.session_state["df_propuesta_enfermera"]):
             st.session_state["df_propuesta_enfermera"] = df_edited_sol
             st.rerun()
@@ -778,12 +775,11 @@ elif st.session_state["pagina"] == "incidencias":
 
         def color_incidencia(row):
             if row.get('Solucionada', False) == True:
-                return ['background-color: #fecaca !important; color: #7f1d1d !important; text-decoration: line-through; font-weight: bold !important;'] * len(row)
+                return ['background-color: #fecaca; color: #7f1d1d; text-decoration: line-through; font-weight: bold;'] * len(row)
             return [''] * len(row)
 
         styled_inc = st.session_state["df_inc_edit_state"].style.apply(color_incidencia, axis=1)
 
-        # Bloquear todas las columnas excepto el check
         col_config_inc = {}
         for col in st.session_state["df_inc_edit_state"].columns:
             if col != 'Solucionada': col_config_inc[col] = st.column_config.TextColumn(disabled=True)
@@ -795,7 +791,6 @@ elif st.session_state["pagina"] == "incidencias":
             column_config=col_config_inc
         )
         
-        # Si se hace click en el check, refrescar pantalla para pintar color al momento
         if not df_edit_inc.equals(st.session_state["df_inc_edit_state"]):
             st.session_state["df_inc_edit_state"] = df_edit_inc
             st.rerun()
@@ -813,7 +808,11 @@ elif st.session_state["pagina"] == "incidencias":
     if st.button("⬅ Volver"): st.session_state["pagina"] = "inicio"; st.rerun()
     
 elif st.session_state["pagina"] == "gestion_usuarios":
-    if "usuarios" not in permisos_usuario: st.stop()
+    if "usuarios" not in permisos_usuario:
+        st.error("⛔ ACCESO RESTRINGIDO.")
+        if st.button("⬅ Volver"): st.session_state["pagina"] = "inicio"; st.rerun()
+        st.stop()
+        
     st.markdown("<h2 style='text-align: center; color: #1e293b; font-weight: 800;'>🔐 GESTIÓN DE USUARIOS</h2>", unsafe_allow_html=True)
     tabs = st.tabs(["👥 Cuentas", "🛡️ Roles"])
     with tabs[0]:
