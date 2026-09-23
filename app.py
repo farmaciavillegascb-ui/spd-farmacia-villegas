@@ -468,7 +468,7 @@ if st.session_state["pagina"] == "inicio":
             if st.button("🛒 **VER PEDIDOS DEFINITIVOS**", use_container_width=True): st.session_state["pagina"] = "pedidos_definitivos_admin"; st.rerun()
 
 # ----------------------------------------------------
-# MÓDULO: GESTIÓN DE BAJAS (PROPUESTA Y VALIDACIÓN FARMACÉUTICO)
+# MÓDULO: GESTIÓN DE BAJAS
 # ----------------------------------------------------
 elif st.session_state["pagina"] == "baja_paciente":
     if "bajas" not in permisos_usuario:
@@ -479,7 +479,6 @@ elif st.session_state["pagina"] == "baja_paciente":
     st.markdown("<h2 style='text-align: center; color: #1e293b; font-weight: 800;'>👴 GESTIÓN DE BAJAS DE PACIENTES</h2>", unsafe_allow_html=True)
 
     if rol_actual != "admin":
-        # VISTA ENFERMERO: Solicitar baja
         st.markdown("##### 📝 Solicitar Baja de Paciente")
         paciente_seleccionado = st.selectbox("Seleccione paciente activo para solicitar baja:", [""] + list(shared_data["lista_pacientes"].keys()))
         
@@ -507,7 +506,6 @@ elif st.session_state["pagina"] == "baja_paciente":
             st.info("No hay propuestas de baja enviadas.")
             
     else:
-        # VISTA FARMACÉUTICO: Validar bajas pendientes y decidir con/sin devolución
         st.markdown("##### 📥 Propuestas de Baja Pendientes de Validación")
         pendientes_baja = [b for b in shared_data["solicitudes_baja"] if b["estado"] == "Pendiente"]
         
@@ -575,7 +573,7 @@ elif st.session_state["pagina"] == "baja_paciente":
     if st.button("⬅ Volver al Menú Principal", use_container_width=True): st.session_state["pagina"] = "inicio"; st.rerun()
 
 # ----------------------------------------------------
-# MÓDULO: GESTIÓN DE ALTAS (PROPUESTA ENFERMERÍA Y VALIDACIÓN FARMACÉUTICO CON REBOTE)
+# MÓDULO: GESTIÓN DE ALTAS (CON CÓDIGO PACIENTE, NOMBRE Y CIP)
 # ----------------------------------------------------
 elif st.session_state["pagina"] == "alta_paciente":
     if "altas" not in permisos_usuario:
@@ -586,27 +584,33 @@ elif st.session_state["pagina"] == "alta_paciente":
     st.markdown("<h2 style='text-align: center; color: #1e293b; font-weight: 800;'>👴 GESTIÓN DE ALTAS DE PACIENTES</h2>", unsafe_allow_html=True)
 
     if rol_actual != "admin":
-        # VISTA ENFERMERO: Crear propuesta de alta y ver rechazadas con observaciones
         st.markdown("##### 📝 Enviar Propuesta de Alta de Paciente")
         
         if "df_alta_cargado" not in st.session_state:
             st.session_state["df_alta_cargado"] = pd.DataFrame(columns=['Medicamento', 'CN', 'Posologia', 'Ultima Entrega'])
             
         with st.form("form_propuesta_alta"):
-            nuevo_nombre = st.text_input("Nombre completo del paciente:")
-            nuevo_cip = st.text_input("CIP:")
-            nueva_ref = st.text_input("Referencia:", value="NUEVO")
+            st.markdown("###### 📇 Datos de Identificación del Paciente:")
+            col_a1, col_a2, col_a3 = st.columns(3)
+            with col_a1:
+                nueva_ref = st.text_input("Código del Paciente (Ref):", value="")
+            with col_a2:
+                nuevo_nombre = st.text_input("Nombre Completo:")
+            with col_a3:
+                nuevo_cip = st.text_input("Código CIP:")
+                
+            st.markdown("###### 💊 Tratamientos del Paciente:")
             meds_editadas = st.data_editor(st.session_state["df_alta_cargado"], num_rows="dynamic", key="editor_alta_paciente", use_container_width=True)
             
             if st.form_submit_button("📤 Enviar Propuesta de Alta al Farmacéutico", use_container_width=True):
-                if nuevo_nombre.strip():
+                if nuevo_nombre.strip() and nueva_ref.strip() and nuevo_cip.strip():
                     df_final = meds_editadas.copy()
                     df_final['Ultima Entrega'] = ""
                     nueva_prop = {
                         "id": str(uuid.uuid4())[:8],
                         "nombre": nuevo_nombre.strip(),
-                        "cip": nuevo_cip,
-                        "ref": nueva_ref,
+                        "cip": nuevo_cip.strip(),
+                        "ref": nueva_ref.strip(),
                         "datos": df_final,
                         "estado": "Pendiente",
                         "observacion": "",
@@ -617,7 +621,7 @@ elif st.session_state["pagina"] == "alta_paciente":
                     st.session_state["df_alta_cargado"] = pd.DataFrame(columns=['Medicamento', 'CN', 'Posologia', 'Ultima Entrega'])
                     time.sleep(1.5); st.rerun()
                 else:
-                    st.warning("El nombre del paciente es obligatorio.")
+                    st.warning("⚠️ Todos los campos de identificación (Código del Paciente, Nombre Completo y Código CIP) son obligatorios.")
 
         st.markdown("---")
         st.markdown("##### 📋 Mis Propuestas de Alta (Estado y Observaciones)")
@@ -626,7 +630,7 @@ elif st.session_state["pagina"] == "alta_paciente":
             for alta in mis_altas:
                 color_estado = "#fef08a" if alta["estado"] == "Pendiente" else ("#bbf7d0" if alta["estado"] == "Validada" else "#fecaca")
                 with st.container(border=True):
-                    st.markdown(f"**Paciente:** {alta['nombre']} (Ref: {alta['ref']}) — Estado: <span style='background-color: {color_estado}; padding: 2px 8px; border-radius: 4px;'><b>{alta['estado']}</b></span>", unsafe_allow_html=True)
+                    st.markdown(f"**Paciente:** {alta['nombre']} (Código: {alta['ref']}, CIP: {alta['cip']}) — Estado: <span style='background-color: {color_estado}; padding: 2px 8px; border-radius: 4px;'><b>{alta['estado']}</b></span>", unsafe_allow_html=True)
                     if alta["estado"] == "Rechazada":
                         st.error(f"❌ **Motivo del rechazo / Observación del farmacéutico:** {alta['observacion']}")
                         if st.button(f"🔄 Corregir y Reenviar ({alta['id']})", key=f"re_enviar_{alta['id']}"):
@@ -637,7 +641,6 @@ elif st.session_state["pagina"] == "alta_paciente":
             st.info("No hay propuestas de alta registradas.")
 
     else:
-        # VISTA FARMACÉUTICO: Validar o rechazar propuestas de alta con observación
         st.markdown("##### 📥 Propuestas de Alta Pendientes de Validación")
         pendientes_alta = [a for a in shared_data["solicitudes_alta"] if a["estado"] == "Pendiente"]
         
@@ -646,11 +649,11 @@ elif st.session_state["pagina"] == "alta_paciente":
         else:
             for alta in pendientes_alta:
                 with st.container(border=True):
-                    st.markdown(f"**Paciente:** {alta['nombre']} (Ref: {alta['ref']}, CIP: {alta['cip']}) — *Enviada el {alta['fecha']}*")
+                    st.markdown(f"**Paciente:** {alta['nombre']} | **Código:** {alta['ref']} | **CIP:** {alta['cip']} — *Enviada el {alta['fecha']}*")
                     st.dataframe(alta["datos"], use_container_width=True, hide_index=True)
                     
                     obs_key = f"obs_{alta['id']}"
-                    observacion_input = st.text_input("Observación (obligatorio si rechaza para indicar qué falta o motivo):", key=obs_key)
+                    observacion_input = st.text_input("Observación (escriba aquí si rechaza para indicar qué falta o motivo):", key=obs_key)
                     
                     c_val, c_rec = st.columns(2)
                     with c_val:
@@ -694,7 +697,7 @@ elif st.session_state["pagina"] == "detalle_paciente":
     info = lista_pacientes.get(pk)
     
     if info:
-        st.markdown(f"<h3 style='text-align: center;'>Paciente: {info['nombre']}</h3>", unsafe_allow_html=True)
+        st.markdown(f"<h3 style='text-align: center;'>Paciente: {info['nombre']} (Código: {info['ref']} | CIP: {info['cip']})</h3>", unsafe_allow_html=True)
         
         if st.session_state["modo_incidencia"]:
             st.markdown("### 📝 Completar Detalles de Incidencia")
@@ -748,11 +751,19 @@ elif st.session_state["pagina"] == "detalle_paciente":
         else:
             df_pac = info["datos"].copy()
             cols = df_pac.columns.tolist()
-            for col_name in ['Incidencia', 'Pedido']:
-                if col_name in cols: cols.remove(col_name)
-            new_cols = ['Pedido', 'Incidencia'] + cols
-            new_cols = [c for c in new_cols if c in df_pac.columns]
             
+            # Solo el farmacéutico puede ver y marcar la columna de incidencias para crear nuevas
+            if rol_actual == "admin":
+                for col_name in ['Incidencia', 'Pedido']:
+                    if col_name in cols: cols.remove(col_name)
+                new_cols = ['Pedido', 'Incidencia'] + cols
+            else:
+                # Enfermero solo ve la columna de pedido, la incidencia la tiene restringida (solo lectura en panel general)
+                for col_name in ['Incidencia', 'Pedido']:
+                    if col_name in cols: cols.remove(col_name)
+                new_cols = ['Pedido'] + cols
+                
+            new_cols = [c for c in new_cols if c in df_pac.columns]
             df_mostrar = df_pac[new_cols].copy()
 
             def color_filas_paciente(row):
@@ -786,12 +797,21 @@ elif st.session_state["pagina"] == "detalle_paciente":
 
             if cambio_realizado: st.rerun()
 
-            info["datos"] = df_edited_result
+            # Actualizar datos de pedido en el paciente
+            for idx in range(len(df_edited_result)):
+                if 'Pedido' in df_edited_result.columns and 'Pedido' in info["datos"].columns:
+                    info["datos"].loc[idx, 'Pedido'] = df_edited_result.loc[idx, 'Pedido']
+                if rol_actual == "admin" and 'Incidencia' in df_edited_result.columns and 'Incidencia' in info["datos"].columns:
+                    info["datos"].loc[idx, 'Incidencia'] = df_edited_result.loc[idx, 'Incidencia']
+                    
             shared_data["lista_pacientes"][pk]["datos"] = info["datos"]
 
             st.markdown("<br>", unsafe_allow_html=True)
-            col_btn_ped, col_btn_inc = st.columns(2)
-            
+            if rol_actual == "admin":
+                col_btn_ped, col_btn_inc = st.columns(2)
+            else:
+                col_btn_ped = st.container()
+
             with col_btn_ped:
                 if rol_actual == "admin":
                     if st.button("📦 Enviar a Propuesta de Pedido", use_container_width=True):
@@ -799,12 +819,8 @@ elif st.session_state["pagina"] == "detalle_paciente":
                         if not df_pedidos.empty:
                             for _, row in df_pedidos.iterrows():
                                 item = {
-                                    "ref": info["ref"],
-                                    "paciente": info["nombre"],
-                                    "medicamento": row.get("Medicamento", ""),
-                                    "cn": row.get("CN", ""),
-                                    "posologia": row.get("Posologia", ""),
-                                    "datamatrix": "", "lote": "", "caducidad": ""
+                                    "ref": info["ref"], "paciente": info["nombre"], "medicamento": row.get("Medicamento", ""),
+                                    "cn": row.get("CN", ""), "posologia": row.get("Posologia", ""), "datamatrix": "", "lote": "", "caducidad": ""
                                 }
                                 shared_data["solicitud_pedido"].append(item)
                             info["datos"]["Pedido"] = False
@@ -816,8 +832,8 @@ elif st.session_state["pagina"] == "detalle_paciente":
                 else:
                     st.info("ℹ️ Solo el farmacéutico puede añadir medicamentos a la propuesta desde la ficha del paciente.")
 
-            with col_btn_inc:
-                if "incidencias" in permisos_usuario:
+            if rol_actual == "admin":
+                with col_btn_inc:
                     if st.button("⚠️ Enviar a Incidencias", use_container_width=True):
                         df_incidencias = info["datos"][info["datos"]["Incidencia"] == True]
                         if not df_incidencias.empty:
