@@ -751,7 +751,16 @@ elif st.session_state["pagina"] == "seleccion_productos_enfermera":
             cols.insert(0, 'seleccion_enfermera')
             df_sol = df_sol[cols]
             
-        df_edited = st.data_editor(df_sol, use_container_width=True, hide_index=True, num_rows="dynamic", key="editor_enfermera_propuesta")
+        df_edited = st.data_editor(
+            df_sol, 
+            use_container_width=True, 
+            hide_index=True, 
+            num_rows="dynamic", 
+            key="editor_enfermera_propuesta",
+            column_config={
+                "seleccion_enfermera": st.column_config.CheckboxColumn("Seleccionar", default=False)
+            }
+        )
         shared_data["solicitud_pedido"] = df_edited.to_dict(orient="records")
         
         if st.button("🚀 Solicitar Pedido Definitivo"):
@@ -858,8 +867,27 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
             st.download_button("📄 Imprimir Albarán de Entrega (PDF)", data=pdf_bytes, file_name="Albaran_Entrega.pdf", mime="application/pdf", use_container_width=True)
         with col_act:
             if st.button("📌 Actualizar Última Entrega y Limpiar", use_container_width=True):
+                fecha_hoy = datetime.now().strftime("%d/%m/%Y")
+                # Actualizar la columna 'Ultima Entrega' en cada paciente correspondiente
+                for item in shared_data["pedidos_definitivos"]:
+                    ref_item = str(item.get("ref", ""))
+                    med_item = str(item.get("medicamento", ""))
+                    cn_item = str(item.get("cn", ""))
+                    
+                    for pk, p_info in shared_data["lista_pacientes"].items():
+                        if str(p_info.get("ref", "")) == ref_item:
+                            df_p = p_info["datos"]
+                            if 'Ultima Entrega' not in df_p.columns:
+                                df_p['Ultima Entrega'] = ""
+                            
+                            mask = (df_p['CN'].astype(str).str.zfill(6) == str(cn_item).zfill(6)) | (df_p['Medicamento'].astype(str) == med_item)
+                            if mask.any():
+                                df_p.loc[mask, 'Ultima Entrega'] = fecha_hoy
+                            shared_data["lista_pacientes"][pk]["datos"] = df_p
+
                 shared_data["pedidos_definitivos"] = []
-                st.success("¡Fechas actualizadas!"); time.sleep(1.5); st.rerun()
+                st.success("¡Fechas de última entrega actualizadas en las fichas y lista limpiada!")
+                time.sleep(1.5); st.rerun()
     if st.button("⬅ Volver al Menú"): st.session_state["pagina"] = "inicio"; st.rerun()
 
 elif st.session_state["pagina"] == "incidencias":
