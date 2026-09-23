@@ -176,8 +176,76 @@ def limpiar_texto_pdf(texto):
     texto_str = texto_str.replace('ñ', 'n').replace('Ñ', 'N').replace('º', '.').replace('ª', '.').replace('—', '-')
     return unicodedata.normalize('NFKD', texto_str).encode('ascii', 'ignore').decode('ascii')
 
+def dibujar_tabla_pdf(pdf, headers, rows_data, col_widths, align_list=None):
+    header_height = 8
+    pdf.set_font("Arial", 'B', 8)
+    x_start = pdf.get_x()
+    y_start = pdf.get_y()
+    
+    for i, h_text in enumerate(headers):
+        w = col_widths[i]
+        cx = pdf.get_x()
+        cy = pdf.get_y()
+        pdf.rect(cx, cy, w, header_height)
+        pdf.set_xy(cx, cy + 1.5)
+        pdf.cell(w, 5, limpiar_texto_pdf(h_text), align='C', ln=0)
+        pdf.set_xy(cx + w, y_start)
+    pdf.set_xy(x_start, y_start + header_height)
+    
+    pdf.set_font("Arial", '', 7.5)
+    for row in rows_data:
+        cell_lines = []
+        max_num_lines = 1
+        for i, val in enumerate(row):
+            w = col_widths[i]
+            txt = str(val if val is not None else "")
+            lines = pdf.multi_cell(w - 2, 3.5, txt, split_only=True)
+            cell_lines.append(lines)
+            if len(lines) > max_num_lines:
+                max_num_lines = len(lines)
+        
+        row_height = max(6, max_num_lines * 3.5 + 2)
+        
+        xr_start = pdf.get_x()
+        yr_start = pdf.get_y()
+        
+        if yr_start + row_height > 195:
+            pdf.add_page()
+            pdf.set_font("Arial", 'B', 8)
+            hx = pdf.get_x()
+            hy = pdf.get_y()
+            for i, h_text in enumerate(headers):
+                w = col_widths[i]
+                cx = pdf.get_x()
+                cy = pdf.get_y()
+                pdf.rect(cx, cy, w, header_height)
+                pdf.set_xy(cx, cy + 1.5)
+                pdf.cell(w, 5, limpiar_texto_pdf(h_text), align='C', ln=0)
+                pdf.set_xy(cx + w, hy)
+            pdf.set_xy(hx, hy + header_height)
+            pdf.set_font("Arial", '', 7.5)
+            yr_start = pdf.get_y()
+            xr_start = pdf.get_x()
+
+        for i, lines in enumerate(cell_lines):
+            w = col_widths[i]
+            align = align_list[i] if align_list and i < len(align_list) else 'L'
+            cx = pdf.get_x()
+            cy = pdf.get_y()
+            
+            pdf.rect(cx, cy, w, row_height)
+            current_y = cy + 1
+            for line in lines:
+                pdf.set_xy(cx + 1, current_y)
+                pdf.cell(w - 2, 3.5, limpiar_texto_pdf(line), align=align, ln=0)
+                current_y += 3.5
+            
+            pdf.set_xy(cx + w, yr_start)
+            
+        pdf.set_xy(xr_start, yr_start + row_height)
+
 def generar_albaran_devolucion_pdf(nombre_paciente, ref_paciente, lista_devolucion):
-    pdf = FPDF(orientation='L') 
+    pdf = FPDF(orientation='L', unit='mm', format='A4') 
     pdf.add_page()
     pdf.set_font("Arial", 'B', 14)
     pdf.cell(0, 10, limpiar_texto_pdf("FARMACIA VILLEGAS C.B. - ALBARAN DE DEVOLUCION"), ln=True, align='C')
@@ -185,24 +253,23 @@ def generar_albaran_devolucion_pdf(nombre_paciente, ref_paciente, lista_devoluci
     pdf.cell(0, 6, limpiar_texto_pdf(f"Paciente: {nombre_paciente} (Ref: {ref_paciente})"), ln=True, align='L')
     pdf.ln(5)
     
-    pdf.set_font("Arial", 'B', 9)
-    # Anchos ampliados y distribuidos para evitar solapamientos
-    col_widths = [65, 80, 22, 38, 28, 25, 25] 
     headers = ["Medicamento", "Descripcion", "CN", "Lote", "Caducidad", "Serie", "Restantes"]
-    for i in range(len(headers)):
-        pdf.cell(col_widths[i], 8, limpiar_texto_pdf(headers[i]), border=1, align='C')
-    pdf.ln()
+    col_widths = [62, 78, 22, 38, 28, 25, 22]
+    align_list = ['L', 'L', 'C', 'C', 'C', 'C', 'C']
     
-    pdf.set_font("Arial", '', 8)
+    rows_data = []
     for row in lista_devolucion:
-        pdf.cell(col_widths[0], 8, limpiar_texto_pdf(str(row.get('Medicamento', ''))[:40]), border=1)
-        pdf.cell(col_widths[1], 8, limpiar_texto_pdf(str(row.get('Descripción', ''))[:50]), border=1)
-        pdf.cell(col_widths[2], 8, limpiar_texto_pdf(str(row.get('CN', ''))[:10]), border=1, align='C')
-        pdf.cell(col_widths[3], 8, limpiar_texto_pdf(str(row.get('Lote', ''))[:18]), border=1, align='C')
-        pdf.cell(col_widths[4], 8, limpiar_texto_pdf(str(row.get('Caducidad', ''))[:10]), border=1, align='C')
-        pdf.cell(col_widths[5], 8, limpiar_texto_pdf(str(row.get('Serie', ''))[:15]), border=1, align='C')
-        pdf.cell(col_widths[6], 8, limpiar_texto_pdf(str(row.get('Pastillas restantes', '0'))), border=1, align='C')
-        pdf.ln()
+        rows_data.append([
+            str(row.get('Medicamento', '')),
+            str(row.get('Descripción', '')),
+            str(row.get('CN', '')),
+            str(row.get('Lote', '')),
+            str(row.get('Caducidad', '')),
+            str(row.get('Serie', '')),
+            str(row.get('Pastillas restantes', '0'))
+        ])
+        
+    dibujar_tabla_pdf(pdf, headers, rows_data, col_widths, align_list)
     return pdf.output(dest='S').encode('latin1')
 
 @st.cache_resource
@@ -474,7 +541,7 @@ elif st.session_state["pagina"] == "baja_paciente":
                     st.success("¡Baja registrada con éxito!"); time.sleep(1.5); st.rerun()
 
         st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("⬅ Volver a Modalidades"):
+        if st.button("⬅ Volver al Menú de Modalidades"):
             st.session_state["baja_paso"] = "elegir_modalidad"; st.rerun()
 
 # ----------------------------------------------------
@@ -757,7 +824,7 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
         st.markdown("<br>", unsafe_allow_html=True)
         col_pdf, col_act = st.columns(2)
         with col_pdf:
-            pdf = FPDF(orientation='L') 
+            pdf = FPDF(orientation='L', unit='mm', format='A4') 
             pdf.add_page()
             pdf.set_font("Arial", 'B', 14)
             pdf.cell(0, 10, limpiar_texto_pdf("FARMACIA VILLEGAS C.B."), ln=True, align='C')
@@ -769,25 +836,24 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
             pdf.cell(0, 10, limpiar_texto_pdf(f"ALBARAN DE ENTREGA - Fecha: {fecha_actual}"), ln=True, align='L')
             pdf.ln(5)
             
-            pdf.set_font("Arial", 'B', 9)
-            # Anchos ampliados y distribuidos para los albaranes de entrega
-            col_widths = [20, 60, 80, 22, 22, 45, 25, 25] 
             headers = ["Ref.", "Paciente", "Medicamento", "C.N.", "Posologia", "DataMatrix", "Lote", "Caducidad"]
-            for i in range(len(headers)):
-                pdf.cell(col_widths[i], 8, limpiar_texto_pdf(headers[i]), border=1, align='C')
-            pdf.ln()
+            col_widths = [20, 55, 75, 22, 25, 45, 20, 20] 
+            align_list = ['C', 'L', 'L', 'C', 'C', 'L', 'C', 'C']
             
-            pdf.set_font("Arial", '', 8)
+            rows_data = []
             for row in shared_data["pedidos_definitivos"]:
-                pdf.cell(col_widths[0], 8, limpiar_texto_pdf(str(row.get('ref', ''))[:10]), border=1)
-                pdf.cell(col_widths[1], 8, limpiar_texto_pdf(str(row.get('paciente', ''))[:40]), border=1)
-                pdf.cell(col_widths[2], 8, limpiar_texto_pdf(str(row.get('medicamento', ''))[:50]), border=1)
-                pdf.cell(col_widths[3], 8, limpiar_texto_pdf(str(row.get('cn', ''))[:10]), border=1, align='C')
-                pdf.cell(col_widths[4], 8, limpiar_texto_pdf(str(row.get('posologia', ''))[:15]), border=1, align='C')
-                pdf.cell(col_widths[5], 8, limpiar_texto_pdf(str(row.get('datamatrix', ''))[:35]), border=1)
-                pdf.cell(col_widths[6], 8, limpiar_texto_pdf(str(row.get('lote', ''))[:15]), border=1, align='C')
-                pdf.cell(col_widths[7], 8, limpiar_texto_pdf(str(row.get('caducidad', ''))[:12]), border=1, align='C')
-                pdf.ln()
+                rows_data.append([
+                    str(row.get('ref', '')),
+                    str(row.get('paciente', '')),
+                    str(row.get('medicamento', '')),
+                    str(row.get('cn', '')),
+                    str(row.get('posologia', '')),
+                    str(row.get('datamatrix', '')),
+                    str(row.get('lote', '')),
+                    str(row.get('caducidad', ''))
+                ])
+                
+            dibujar_tabla_pdf(pdf, headers, rows_data, col_widths, align_list)
             pdf_bytes = pdf.output(dest='S').encode('latin1')
             st.download_button("📄 Imprimir Albarán de Entrega (PDF)", data=pdf_bytes, file_name="Albaran_Entrega.pdf", mime="application/pdf", use_container_width=True)
         with col_act:
