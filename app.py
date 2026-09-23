@@ -15,7 +15,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Estilos CSS avanzados y responsivos para móviles
+# Estilos CSS avanzados y responsivos para móviles y selección táctil
 st.markdown("""
 <style>
     .block-container { padding-top: 0.5rem !important; padding-bottom: 2rem !important; padding-left: 1rem !important; padding-right: 1rem !important; }
@@ -53,7 +53,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ----------------------------------------------------
-# CLASE PDF PERSONALIZADA (ALBARANES CON FIRMAS EN CADA HOJA)
+# CLASE PDF PERSONALIZADA
 # ----------------------------------------------------
 class PDFAlbaran(FPDF):
     def footer(self):
@@ -69,7 +69,7 @@ class PDFAlbaran(FPDF):
         self.cell(60, 5, "Firma Enfermera", align='C')
 
 # ----------------------------------------------------
-# CARGA DE BASE DE DATOS DE MEDICAMENTOS (EN CACHÉ)
+# CARGA DE BASE DE DATOS DE MEDICAMENTOS
 # ----------------------------------------------------
 @st.cache_data
 def cargar_base_medicamentos():
@@ -115,7 +115,9 @@ def cargar_datos_excel():
             if 'Fecha inicio' not in df_hoja.columns: df_hoja['Fecha inicio'] = ""
             if 'Ultima Entrega' not in df_hoja.columns: df_hoja['Ultima Entrega'] = ""
             if 'Pedido' not in df_hoja.columns: df_hoja['Pedido'] = False
+            else: df_hoja['Pedido'] = df_hoja['Pedido'].astype(bool)
             if 'Incidencia' not in df_hoja.columns: df_hoja['Incidencia'] = False
+            else: df_hoja['Incidencia'] = df_hoja['Incidencia'].astype(bool)
             
             pacientes_dict[etiqueta] = {
                 "ref": ref_paciente, "nombre": nombre_paciente, "cip": cip_paciente, "hoja": hoja, "datos": df_hoja
@@ -696,10 +698,8 @@ elif st.session_state["pagina"] == "lista_pacientes":
         
     st.markdown("<h2 style='text-align: center; color: #1e293b; font-weight: 800;'>PACIENTES</h2>", unsafe_allow_html=True)
     
-    # Barra de búsqueda táctil / móvil friendly
     busqueda_paciente = st.text_input("🔍 Buscar paciente (por nombre, código o CIP):", value="", placeholder="Escribe para buscar...", key="input_busq_paciente")
     
-    # Filtrar pacientes según el texto introducido
     pacientes_filtrados = {}
     for pk, info in list(lista_pacientes.items()):
         termino = busqueda_paciente.lower()
@@ -778,16 +778,23 @@ elif st.session_state["pagina"] == "detalle_paciente":
                 
             new_cols = [c for c in new_cols if c in df_pac.columns]
             df_mostrar = df_pac[new_cols].copy()
+            
+            # Forzar tipo booleano estricto para respuesta instantánea al 1er clic/toque
+            if 'Pedido' in df_mostrar.columns:
+                df_mostrar['Pedido'] = df_mostrar['Pedido'].astype(bool)
+            if 'Incidencia' in df_mostrar.columns:
+                df_mostrar['Incidencia'] = df_mostrar['Incidencia'].astype(bool)
 
-            def color_filas_paciente(row):
-                if row.get('Incidencia', False) == True:
-                    return ['background-color: #fecaca; color: #7f1d1d;'] * len(row) 
-                elif row.get('Pedido', False) == True:
-                    return ['background-color: #bbf7d0; color: #14532d;'] * len(row) 
-                return [''] * len(row)
-
-            styled_df = df_mostrar.style.apply(color_filas_paciente, axis=1)
-            df_edited_result = st.data_editor(styled_df, use_container_width=True, hide_index=True, key=f"editor_paciente_{pk}")
+            df_edited_result = st.data_editor(
+                df_mostrar, 
+                use_container_width=True, 
+                hide_index=True, 
+                key=f"editor_paciente_{pk}",
+                column_config={
+                    "Pedido": st.column_config.CheckboxColumn("📦 Pedido", default=False),
+                    "Incidencia": st.column_config.CheckboxColumn("⚠️ Incidencia", default=False)
+                }
+            )
             
             cambio_realizado = False
             for idx in range(len(df_edited_result)):
@@ -887,7 +894,7 @@ elif st.session_state["pagina"] == "seleccion_productos_enfermera":
         df_edited = st.data_editor(
             st.session_state["df_propuesta_enfermera"], 
             use_container_width=True, hide_index=True, num_rows="dynamic", key="editor_enfermera_propuesta",
-            column_config={"seleccion_enfermera": st.column_config.CheckboxColumn("Seleccionar", default=False)}
+            column_config={"seleccion_enfermera": st.column_config.CheckboxColumn("✔ Seleccionar", default=False)}
         )
         st.session_state["df_propuesta_enfermera"] = df_edited
         
@@ -1033,8 +1040,18 @@ elif st.session_state["pagina"] == "incidencias":
         df_inc = pd.DataFrame(shared_data["incidencias_activas"])
         if 'Solucionada' not in df_inc.columns:
             df_inc.insert(0, 'Solucionada', False)
+        
+        df_inc['Solucionada'] = df_inc['Solucionada'].astype(bool)
             
-        df_edit_inc = st.data_editor(df_inc, use_container_width=True, hide_index=True, key="editor_panel_incidencias")
+        df_edit_inc = st.data_editor(
+            df_inc, 
+            use_container_width=True, 
+            hide_index=True, 
+            key="editor_panel_incidencias",
+            column_config={
+                "Solucionada": st.column_config.CheckboxColumn("✔ Solucionada", default=False)
+            }
+        )
         
         if "validar_incidencias" in permisos_usuario:
             st.markdown("<br>", unsafe_allow_html=True)
