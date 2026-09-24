@@ -1,13 +1,23 @@
+import os
+# ----------------------------------------------------
+# FORZAR TEMA CLARO (LIGHT MODE) AUTOMÁTICAMENTE
+# ----------------------------------------------------
+if not os.path.exists(".streamlit"):
+    os.makedirs(".streamlit")
+config_path = ".streamlit/config.toml"
+if not os.path.exists(config_path):
+    with open(config_path, "w") as f:
+        f.write("[theme]\nbase='light'\nprimaryColor='#0ea5e9'\n")
+
 import streamlit as st
 import pandas as pd
-import os
 import time
 import uuid
 import unicodedata
 from fpdf import FPDF
 from datetime import datetime
 
-# Configuración de la página optimizada para móviles y escritorio
+# Configuración de la página optimizada
 st.set_page_config(
     page_title="SPD FARMACIA VILLEGAS",
     page_icon="💊",
@@ -15,24 +25,39 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Estilos CSS avanzados y responsivos para móviles y selección táctil
+# Estilos CSS avanzados (FORZANDO FONDOS BLANCOS)
 st.markdown("""
 <style>
     .block-container { padding-top: 0.5rem !important; padding-bottom: 2rem !important; padding-left: 1rem !important; padding-right: 1rem !important; }
-    .stApp { background-color: #f7f9fc; }
+    
+    /* Forzar fondo de la aplicación claro */
+    .stApp, .main { background-color: #f7f9fc !important; }
+    
     #MainMenu {visibility: hidden;} footer {visibility: hidden;} header {visibility: hidden;}
     [data-testid="collapsedControl"] { display: none; }
     
-    .dashboard-header { background: #ffffff; padding: 12px 16px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05); margin-bottom: 12px; border: 1px solid #e2e8f0; }
+    .dashboard-header { background: #ffffff !important; padding: 12px 16px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05); margin-bottom: 12px; border: 1px solid #e2e8f0; }
     .logo-container { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 8px; }
     .logo-title { font-size: 20px; font-weight: 800; color: #1e293b; letter-spacing: 0.5px; }
-    .status-bar { display: flex; justify-content: space-between; align-items: center; background: #f8fafc; padding: 6px 12px; border-radius: 8px; font-size: 12px; color: #475569; font-weight: 600; margin-bottom: 10px; border: 1px solid #e2e8f0; }
+    .status-bar { display: flex; justify-content: space-between; align-items: center; background: #f8fafc !important; padding: 6px 12px; border-radius: 8px; font-size: 12px; color: #475569; font-weight: 600; margin-bottom: 10px; border: 1px solid #e2e8f0; }
+    
+    /* FORZAR INPUTS (USUARIO/CLAVE/BUSCADOR) EN BLANCO */
+    div[data-baseweb="input"] > div { background-color: #ffffff !important; border: 1px solid #cbd5e1 !important; }
+    input { background-color: #ffffff !important; color: #1e293b !important; -webkit-text-fill-color: #1e293b !important; font-weight: 500 !important; }
+    
+    /* FORZAR SELECTORES EN BLANCO */
+    div[data-baseweb="select"] > div { background-color: #ffffff !important; border: 1px solid #cbd5e1 !important; }
+    div[data-baseweb="select"] * { color: #1e293b !important; }
+    
+    /* FORZAR BOTONES EN BLANCO/CLARO */
+    div.stButton > button { width: 100% !important; height: 45px !important; border-radius: 10px !important; font-weight: 700 !important; font-size: 11px !important; background-color: #ffffff !important; color: #334155 !important; border: 2px solid #cbd5e1 !important; box-shadow: 0 2px 6px rgba(0,0,0,0.03) !important; transition: all 0.2s ease-in-out !important; }
+    div.stButton > button:hover { background-color: #f1f5f9 !important; border-color: #0ea5e9 !important; color: #0284c7 !important; transform: translateY(-1px); }
+    
+    /* FORZAR FORMULARIOS EN BLANCO */
+    div[data-testid="stForm"] { background-color: #ffffff !important; border-color: #e2e8f0 !important; }
     
     [data-testid="column"] { display: flex !important; flex-direction: column !important; align-items: stretch !important; }
     [data-testid="column"] > div { display: flex !important; flex-direction: column !important; flex-grow: 1 !important; }
-    
-    div.stButton > button { width: 100% !important; height: 45px !important; border-radius: 10px !important; font-weight: 700 !important; font-size: 11px !important; background-color: #ffffff !important; color: #334155 !important; border: 2px solid #cbd5e1 !important; box-shadow: 0 2px 6px rgba(0,0,0,0.03) !important; transition: all 0.2s ease-in-out !important; flex-grow: 1 !important; }
-    div.stButton > button:hover { background-color: #f1f5f9 !important; border-color: #0ea5e9 !important; color: #0284c7 !important; transform: translateY(-1px); }
     
     @keyframes pulse-subtle { 
         0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.6); } 
@@ -40,7 +65,6 @@ st.markdown("""
         100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } 
     }
 
-    /* Optimización específica para teléfonos móviles */
     @media (max-width: 768px) {
         .block-container { padding-top: 0.3rem !important; padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
         .logo-title { font-size: 16px !important; }
@@ -397,8 +421,7 @@ if st.session_state["pagina"] == "inicio":
             if st.button("🛒 **VER PEDIDOS**", use_container_width=True): st.session_state["pagina"] = "pedidos_definitivos_admin"; st.rerun()
 
 # ----------------------------------------------------
-# BAJAS, ALTAS Y ALBARANES OMITIDOS PARA BREVEDAD AQUÍ (Igual que versión anterior)
-# SE MANTIENEN COMPLETAMENTE EN EL CÓDIGO FINAL 
+# GESTIÓN DE BAJAS
 # ----------------------------------------------------
 elif st.session_state["pagina"] == "baja_paciente":
     if "bajas" not in permisos_usuario: st.stop()
@@ -456,6 +479,9 @@ elif st.session_state["pagina"] == "baja_paciente":
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("⬅ Volver al Menú", use_container_width=True): st.session_state["pagina"] = "inicio"; st.rerun()
 
+# ----------------------------------------------------
+# GESTIÓN DE ALTAS
+# ----------------------------------------------------
 elif st.session_state["pagina"] == "alta_paciente":
     if "altas" not in permisos_usuario: st.stop()
     st.markdown("<h2 style='text-align: center; color: #1e293b; font-weight: 800;'>👴 GESTIÓN DE ALTAS</h2>", unsafe_allow_html=True)
@@ -505,7 +531,7 @@ elif st.session_state["pagina"] == "alta_paciente":
 
 
 # ----------------------------------------------------
-# LISTA DE PACIENTES
+# LISTA DE PACIENTES Y BUSCADOR
 # ----------------------------------------------------
 elif st.session_state["pagina"] == "lista_pacientes":
     if "pacientes" not in permisos_usuario: st.stop()
@@ -523,7 +549,7 @@ elif st.session_state["pagina"] == "lista_pacientes":
     if st.button("⬅ Volver", use_container_width=True): st.session_state["pagina"] = "inicio"; st.rerun()
 
 # ----------------------------------------------------
-# FICHA DE PACIENTE (CON CAMBIO DE COLOR EN FILA COMPLETA)
+# FICHA DE PACIENTE (CON CAMBIO DE COLOR SIN !IMPORTANT)
 # ----------------------------------------------------
 elif st.session_state["pagina"] == "detalle_paciente":
     if "pacientes" not in permisos_usuario: st.stop()
@@ -572,7 +598,7 @@ elif st.session_state["pagina"] == "detalle_paciente":
             if 'Pedido' in df_mostrar.columns: df_mostrar['Pedido'] = df_mostrar['Pedido'].astype(bool)
             if 'Incidencia' in df_mostrar.columns: df_mostrar['Incidencia'] = df_mostrar['Incidencia'].astype(bool)
 
-            # FUNCIÓN CORREGIDA SIN "!important" PARA QUE STREAMLIT NO ROMPA EL COLOR Y SE VEA BLANCO
+            # ESTILOS NATIVOS PARA MODO CLARO (VERDE Y ROJO PASTEL CON TEXTO OSCURO)
             def color_filas_paciente(row):
                 if row.get('Incidencia', False) == True:
                     return ['background-color: #fecaca; color: #7f1d1d; font-weight: bold;'] * len(row) 
@@ -580,10 +606,9 @@ elif st.session_state["pagina"] == "detalle_paciente":
                     return ['background-color: #bbf7d0; color: #14532d; font-weight: bold;'] * len(row) 
                 return [''] * len(row)
 
-            # ESTILOS AL DATAFRAME
             styled_df = df_mostrar.style.apply(color_filas_paciente, axis=1)
             
-            # DESHABILITAR EDICIÓN DE TEXTO PARA FACILITAR TOQUE EN EL CHECK EN MÓVILES
+            # BLOQUEO DE EDICIÓN PARA EVITAR EL TECLADO EN MÓVILES
             col_config_dict = {}
             for col in df_mostrar.columns:
                 if col not in ['Pedido', 'Incidencia']: col_config_dict[col] = st.column_config.TextColumn(disabled=True)
@@ -598,7 +623,6 @@ elif st.session_state["pagina"] == "detalle_paciente":
                 column_config=col_config_dict
             )
             
-            # REFRESCAR INMEDIATAMENTE LA VISTA AL MARCAR CHECKBOX PARA PINTAR LA FILA INSTANTÁNEAMENTE
             if not df_edited_result.equals(df_mostrar):
                 cambio_realizado = False
                 for idx in range(len(df_edited_result)):
@@ -608,7 +632,6 @@ elif st.session_state["pagina"] == "detalle_paciente":
                     if p_val and i_val:
                         old_p = df_mostrar.loc[idx, 'Pedido'] if 'Pedido' in df_mostrar.columns else False
                         old_i = df_mostrar.loc[idx, 'Incidencia'] if 'Incidencia' in df_mostrar.columns else False
-                        
                         if p_val and not old_p: df_edited_result.loc[idx, 'Incidencia'] = False; cambio_realizado = True
                         elif i_val and not old_i: df_edited_result.loc[idx, 'Pedido'] = False; cambio_realizado = True
                         else: df_edited_result.loc[idx, 'Incidencia'] = False; cambio_realizado = True
@@ -618,7 +641,7 @@ elif st.session_state["pagina"] == "detalle_paciente":
                     if rol_actual == "admin" and 'Incidencia' in df_edited_result.columns and 'Incidencia' in info["datos"].columns: info["datos"].loc[idx, 'Incidencia'] = df_edited_result.loc[idx, 'Incidencia']
                         
                 shared_data["lista_pacientes"][pk]["datos"] = info["datos"]
-                st.rerun() # Dispara el refresco del color visual al instante
+                st.rerun() # Refresco instantáneo de color
 
             st.markdown("<br>", unsafe_allow_html=True)
             col_btn_ped, col_btn_inc = st.columns(2) if rol_actual == "admin" else (st.container(), None)
@@ -652,7 +675,7 @@ elif st.session_state["pagina"] == "detalle_paciente":
     if st.button("⬅ Volver a Lista"): st.session_state["modo_incidencia"] = False; st.session_state["pagina"] = "lista_pacientes"; st.rerun()
 
 # ----------------------------------------------------
-# PROPUESTA DE PEDIDO (ENFERMERÍA) - ILUMINACIÓN Y BLOQUEO DE EDICIÓN
+# PROPUESTA DE PEDIDO (ENFERMERÍA) - ILUMINACIÓN
 # ----------------------------------------------------
 elif st.session_state["pagina"] == "seleccion_productos_enfermera":
     if "propuesta" not in permisos_usuario: st.stop()
@@ -761,7 +784,7 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
     if st.button("⬅ Volver"): st.session_state["pagina"] = "inicio"; st.rerun()
 
 # ----------------------------------------------------
-# INCIDENCIAS - ILUMINACIÓN DE FILA EN ROJO/TACHADO
+# INCIDENCIAS - ILUMINACIÓN DE FILA EN ROJO
 # ----------------------------------------------------
 elif st.session_state["pagina"] == "incidencias":
     if "incidencias" not in permisos_usuario: st.stop()
@@ -775,7 +798,7 @@ elif st.session_state["pagina"] == "incidencias":
 
         def color_incidencia(row):
             if row.get('Solucionada', False) == True:
-                return ['background-color: #fecaca; color: #7f1d1d; text-decoration: line-through; font-weight: bold;'] * len(row)
+                return ['background-color: #fecaca; color: #7f1d1d; font-weight: bold; text-decoration: line-through;'] * len(row)
             return [''] * len(row)
 
         styled_inc = st.session_state["df_inc_edit_state"].style.apply(color_incidencia, axis=1)
