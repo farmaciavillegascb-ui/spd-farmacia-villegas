@@ -367,12 +367,13 @@ st.markdown(f'<div class="status-bar"><span>Sistema activo <span style="color: #
 
 num_ped = len(shared_data["pedidos_definitivos"])
 num_prop = len(shared_data["solicitud_pedido"])
+# Contar incidencias no resueltas o pendientes de validar
 num_inc = len(shared_data["incidencias_activas"])
 num_altas = len([a for a in shared_data["solicitudes_alta"] if a["estado"] == "Pendiente"])
 num_bajas = len([b for b in shared_data["solicitudes_baja"] if b["estado"] == "Pendiente"])
 
 alert_ped = (num_ped > 0) or (num_prop > 0) or (num_altas > 0 and rol_actual == "admin") or (num_bajas > 0 and rol_actual == "admin")
-alert_inc = (num_inc > 0)
+alert_inc = any(inc.get("resuelta_por_enfermera", False) for inc in shared_data["incidencias_activas"]) or (num_inc > 0 and rol_actual == "admin")
 
 if alert_ped: st.markdown("""<style>[data-testid="column"]:nth-child(5) div.stButton > button { background: linear-gradient(135deg, #ef4444, #dc2626) !important; color: white !important; }</style>""", unsafe_allow_html=True)
 if alert_inc: st.markdown("""<style>[data-testid="column"]:nth-child(6) div.stButton > button { background: linear-gradient(135deg, #ef4444, #dc2626) !important; color: white !important; }</style>""", unsafe_allow_html=True)
@@ -409,7 +410,8 @@ with col_ped:
             st.rerun()
 with col_inc:
     if "incidencias" in permisos_usuario:
-        lbl = f"⚠️ INCID. ({num_inc})" if num_inc>0 else "⚠️ INCIDENCIAS"
+        hay_aviso_enf = any(inc.get("resuelta_por_enfermera", False) for inc in shared_data["incidencias_activas"])
+        lbl = "⚠️ ¡AVISO INCID!" if hay_aviso_enf else (f"⚠️ INCID. ({num_inc})" if num_inc>0 else "⚠️ INCIDENCIAS")
         if st.button(lbl, key="btn_hdr_inc", use_container_width=True): 
             st.session_state["pagina"] = "incidencias"; st.rerun()
 with col_user:
@@ -600,7 +602,7 @@ elif st.session_state["pagina"] == "detalle_paciente":
             with col_conf:
                 if st.button("✅ Confirmar", use_container_width=True):
                     for _, row in st.session_state["borrador_incidencias"].iterrows():
-                        shared_data["incidencias_activas"].append({"fecha": datetime.now().strftime("%d/%m/%Y %H:%M"), "ref_paciente": row["Código Paciente"], "paciente": row["Nombre Paciente"], "medicamento": row["Medicamento"], "cn": row["C.N."], "motivo": row.get("Motivo", ""), "observaciones": row.get("Observaciones", ""), "estado": "Pendiente"})
+                        shared_data["incidencias_activas"].append({"fecha": datetime.now().strftime("%d/%m/%Y %H:%M"), "ref_paciente": row["Código Paciente"], "paciente": row["Nombre Paciente"], "medicamento": row["Medicamento"], "cn": row["C.N."], "motivo": row.get("Motivo", ""), "observaciones": row.get("Observaciones", ""), "resuelta_por_enfermera": False})
                     info["datos"]["Incidencia"] = False
                     shared_data["lista_pacientes"][pk]["datos"] = info["datos"]
                     st.session_state["modo_incidencia"] = False; st.success("¡Incidencia enviada!"); time.sleep(1.5); st.rerun()
@@ -823,7 +825,7 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
     if st.button("⬅ Volver"): st.session_state["pagina"] = "inicio"; st.rerun()
 
 # ----------------------------------------------------
-# INCIDENCIAS - REDISEÑADO A TARJETAS TÁCTILES
+# INCIDENCIAS - CON AVISO Y ROJO PASTEL
 # ----------------------------------------------------
 elif st.session_state["pagina"] == "incidencias":
     if "incidencias" not in permisos_usuario: st.stop()
@@ -831,42 +833,37 @@ elif st.session_state["pagina"] == "incidencias":
     
     if not shared_data["incidencias_activas"]: 
         st.info("No hay incidencias activas.")
-        if "incidencias_seleccion" in st.session_state: 
-            del st.session_state["incidencias_seleccion"]
     else:
-        st.markdown("<p style='text-align: center; color: #64748b; font-size: 14px;'>Toca el botón gigante debajo de cada incidencia para marcarla como solucionada.</p>", unsafe_allow_html=True)
-        
-        if "incidencias_seleccion" not in st.session_state or len(st.session_state["incidencias_seleccion"]) != len(shared_data["incidencias_activas"]):
-            st.session_state["incidencias_seleccion"] = {i: False for i in range(len(shared_data["incidencias_activas"]))}
+        st.markdown("<p style='text-align: center; color: #64748b; font-size: 14px;'>Toca el botón debajo de cada incidencia para marcarla como solucionada.</p>", unsafe_allow_html=True)
         
         for i, item in enumerate(shared_data["incidencias_activas"]):
-            is_selected = st.session_state["incidencias_seleccion"].get(i, False)
+            is_resuelta = item.get("resuelta_por_enfermera", False)
             
-            # Colores y estilos dependiendo de si está seleccionada (Solucionada)
-            bg_color = "#fecaca" if is_selected else "#ffffff"
-            border_color = "#ef4444" if is_selected else "#cbd5e1"
-            text_color = "#7f1d1d" if is_selected else "#1e293b"
-            icon = "✅" if is_selected else "⚠️"
-            text_decor = "line-through" if is_selected else "none"
-            opacity = "0.6" if is_selected else "1"
+            # Color rojo pastel si está marcada por la enfermera
+            bg_color = "#ffd1d1" if is_resuelta else "#ffffff"
+            border_color = "#ff7b7b" if is_resuelta else "#cbd5e1"
+            text_color = "#5c1d1d" if is_resuelta else "#1e293b"
+            icon = "🛑" if is_resuelta else "⚠️"
+            text_decor = "line-through" if is_resuelta else "none"
             
-            # Mostrar la observación si la hay
             obs_html = f"<div style='font-size: 13px; margin-top: 4px;'>📝 Obs: {item.get('observaciones', '')}</div>" if item.get('observaciones', '') else ""
+            aviso_avanzado = f"<div style='background-color: #ffebee; color: #b71c1c; padding: 6px; border-radius: 6px; font-weight: bold; font-size: 13px; margin-top: 6px;'>🔔 AVISO: La enfermera indica que esta incidencia está RESUELTA. Comprobar y validar.</div>" if is_resuelta else ""
             
             st.markdown(f'''
-            <div style="background-color: {bg_color}; border: 2px solid {border_color}; border-radius: 10px; padding: 12px; margin-bottom: 5px; color: {text_color}; box-shadow: 0 2px 4px rgba(0,0,0,0.05); opacity: {opacity}; transition: all 0.3s ease;">
+            <div style="background-color: {bg_color}; border: 2px solid {border_color}; border-radius: 10px; padding: 12px; margin-bottom: 5px; color: {text_color}; box-shadow: 0 2px 4px rgba(0,0,0,0.05); transition: all 0.3s ease;">
                 <div style="font-weight: 800; font-size: 15px; text-decoration: {text_decor};">{icon} {item.get('paciente', '')} <span style="font-size:12px; font-weight:normal; opacity:0.8;">(Ref: {item.get('ref_paciente', '')})</span></div>
                 <div style="font-size: 14px; margin-top: 4px; text-decoration: {text_decor};">💊 <b>{item.get('medicamento', '')}</b> <span style="font-size:12px; opacity:0.8;">(CN: {item.get('cn', '')})</span></div>
-                <div style="font-size: 13px; margin-top: 4px; color: {'#7f1d1d' if is_selected else '#dc2626'}; font-weight: bold; text-decoration: {text_decor};">🚨 Motivo: {item.get('motivo', '')}</div>
+                <div style="font-size: 13px; margin-top: 4px; font-weight: bold; text-decoration: {text_decor};">🚨 Motivo: {item.get('motivo', '')}</div>
                 {obs_html}
+                {aviso_avanzado}
                 <div style="font-size: 12px; margin-top: 6px; opacity: 0.8;">📅 Fecha: {item.get('fecha', '')}</div>
             </div>
             ''', unsafe_allow_html=True)
             
-            btn_label = "✅ SOLUCIONADA (Tocar para deshacer)" if is_selected else "👆 TOCAR PARA MARCAR COMO SOLUCIONADA"
+            btn_label = "🛑 MARCADA COMO RESUELTA (Tocar para deshacer)" if is_resuelta else "👆 MARCAR COMO RESUELTA"
             
             if st.button(btn_label, key=f"btn_inc_{i}", use_container_width=True):
-                st.session_state["incidencias_seleccion"][i] = not is_selected
+                item["resuelta_por_enfermera"] = not is_resuelta
                 st.rerun()
                 
             st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
@@ -874,14 +871,9 @@ elif st.session_state["pagina"] == "incidencias":
         if "validar_incidencias" in permisos_usuario:
             st.markdown("<br>", unsafe_allow_html=True)
             if st.button("🗑️ Validar y Eliminar Marcadas", use_container_width=True):
-                restantes = []
-                for i, item in enumerate(shared_data["incidencias_activas"]):
-                    if not st.session_state["incidencias_seleccion"].get(i, False):
-                        restantes.append(item)
-                
+                restantes = [item for item in shared_data["incidencias_activas"] if not item.get("resuelta_por_enfermera", False)]
                 shared_data["incidencias_activas"] = restantes
-                del st.session_state["incidencias_seleccion"]
-                st.success("¡Incidencias validadas y eliminadas!")
+                st.success("¡Incidencias validadas y eliminadas correctamente!")
                 time.sleep(1.5)
                 st.rerun()
         
