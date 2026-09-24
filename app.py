@@ -549,7 +549,7 @@ elif st.session_state["pagina"] == "lista_pacientes":
     if st.button("⬅ Volver", use_container_width=True): st.session_state["pagina"] = "inicio"; st.rerun()
 
 # ----------------------------------------------------
-# FICHA DE PACIENTE (CON CAMBIO DE COLOR SIN !IMPORTANT)
+# FICHA DE PACIENTE
 # ----------------------------------------------------
 elif st.session_state["pagina"] == "detalle_paciente":
     if "pacientes" not in permisos_usuario: st.stop()
@@ -598,7 +598,6 @@ elif st.session_state["pagina"] == "detalle_paciente":
             if 'Pedido' in df_mostrar.columns: df_mostrar['Pedido'] = df_mostrar['Pedido'].astype(bool)
             if 'Incidencia' in df_mostrar.columns: df_mostrar['Incidencia'] = df_mostrar['Incidencia'].astype(bool)
 
-            # ESTILOS NATIVOS PARA MODO CLARO (VERDE Y ROJO PASTEL CON TEXTO OSCURO)
             def color_filas_paciente(row):
                 if row.get('Incidencia', False) == True:
                     return ['background-color: #fecaca; color: #7f1d1d; font-weight: bold;'] * len(row) 
@@ -608,7 +607,6 @@ elif st.session_state["pagina"] == "detalle_paciente":
 
             styled_df = df_mostrar.style.apply(color_filas_paciente, axis=1)
             
-            # BLOQUEO DE EDICIÓN PARA EVITAR EL TECLADO EN MÓVILES
             col_config_dict = {}
             for col in df_mostrar.columns:
                 if col not in ['Pedido', 'Incidencia']: col_config_dict[col] = st.column_config.TextColumn(disabled=True)
@@ -641,7 +639,7 @@ elif st.session_state["pagina"] == "detalle_paciente":
                     if rol_actual == "admin" and 'Incidencia' in df_edited_result.columns and 'Incidencia' in info["datos"].columns: info["datos"].loc[idx, 'Incidencia'] = df_edited_result.loc[idx, 'Incidencia']
                         
                 shared_data["lista_pacientes"][pk]["datos"] = info["datos"]
-                st.rerun() # Refresco instantáneo de color
+                st.rerun()
 
             st.markdown("<br>", unsafe_allow_html=True)
             col_btn_ped, col_btn_inc = st.columns(2) if rol_actual == "admin" else (st.container(), None)
@@ -675,54 +673,71 @@ elif st.session_state["pagina"] == "detalle_paciente":
     if st.button("⬅ Volver a Lista"): st.session_state["modo_incidencia"] = False; st.session_state["pagina"] = "lista_pacientes"; st.rerun()
 
 # ----------------------------------------------------
-# PROPUESTA DE PEDIDO (ENFERMERÍA) - ILUMINACIÓN
+# PROPUESTA DE PEDIDO (ENFERMERÍA) - REDISEÑADO A TARJETAS TÁCTILES
 # ----------------------------------------------------
 elif st.session_state["pagina"] == "seleccion_productos_enfermera":
     if "propuesta" not in permisos_usuario: st.stop()
     st.markdown("<h2 style='text-align: center; color: #1e293b; font-weight: 800;'>📦 PROPUESTA (ENFERMERÍA)</h2>", unsafe_allow_html=True)
+    
     if not shared_data["solicitud_pedido"]: 
         st.info("No hay propuestas pendientes.")
+        if "propuesta_seleccion" in st.session_state: 
+            del st.session_state["propuesta_seleccion"]
     else:
-        if "df_propuesta_enfermera" not in st.session_state or len(st.session_state["df_propuesta_enfermera"]) != len(shared_data["solicitud_pedido"]):
-            df_sol = pd.DataFrame(shared_data["solicitud_pedido"])
-            if 'seleccion_enfermera' not in df_sol.columns: df_sol['seleccion_enfermera'] = False
-            df_sol['seleccion_enfermera'] = df_sol['seleccion_enfermera'].astype(bool)
-            cols = df_sol.columns.tolist()
-            cols.remove('seleccion_enfermera'); cols.insert(0, 'seleccion_enfermera')
-            st.session_state["df_propuesta_enfermera"] = df_sol[cols]
-
-        def color_propuesta(row):
-            if row.get('seleccion_enfermera', False) == True:
-                return ['background-color: #bbf7d0; color: #14532d; font-weight: bold;'] * len(row)
-            return [''] * len(row)
+        st.markdown("<p style='text-align: center; color: #64748b; font-size: 14px;'>Toca el botón gigante debajo de cada medicamento para seleccionarlo.</p>", unsafe_allow_html=True)
+        
+        # Inicializamos los checks en falso la primera vez
+        if "propuesta_seleccion" not in st.session_state or len(st.session_state["propuesta_seleccion"]) != len(shared_data["solicitud_pedido"]):
+            st.session_state["propuesta_seleccion"] = {i: False for i in range(len(shared_data["solicitud_pedido"]))}
+        
+        # Generar las tarjetas interactivas (Una por cada medicamento)
+        for i, item in enumerate(shared_data["solicitud_pedido"]):
+            is_selected = st.session_state["propuesta_seleccion"].get(i, False)
             
-        styled_sol = st.session_state["df_propuesta_enfermera"].style.apply(color_propuesta, axis=1)
-        
-        col_config_prop = {}
-        for col in st.session_state["df_propuesta_enfermera"].columns:
-            if col != 'seleccion_enfermera': col_config_prop[col] = st.column_config.TextColumn(disabled=True)
-            else: col_config_prop[col] = st.column_config.CheckboxColumn("✔ Seleccionar", default=False)
-
-        df_edited_sol = st.data_editor(
-            styled_sol, 
-            use_container_width=True, hide_index=True, num_rows="dynamic", key="editor_enfermera_propuesta",
-            column_config=col_config_prop
-        )
-        
-        if not df_edited_sol.equals(st.session_state["df_propuesta_enfermera"]):
-            st.session_state["df_propuesta_enfermera"] = df_edited_sol
-            st.rerun()
+            bg_color = "#bbf7d0" if is_selected else "#ffffff"
+            border_color = "#22c55e" if is_selected else "#cbd5e1"
+            text_color = "#14532d" if is_selected else "#1e293b"
+            icon = "✅" if is_selected else "📦"
+            
+            st.markdown(f'''
+            <div style="background-color: {bg_color}; border: 2px solid {border_color}; border-radius: 10px; padding: 12px; margin-bottom: 5px; color: {text_color}; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                <div style="font-weight: 800; font-size: 15px;">{icon} {item.get('paciente', '')} <span style="font-size:12px; font-weight:normal; opacity:0.8;">(Ref: {item.get('ref', '')})</span></div>
+                <div style="font-size: 14px; margin-top: 4px;">💊 <b>{item.get('medicamento', '')}</b> <span style="font-size:12px; opacity:0.8;">(CN: {item.get('cn', '')})</span></div>
+                <div style="font-size: 13px; margin-top: 4px;">📝 Posología: {item.get('posologia', '')}</div>
+            </div>
+            ''', unsafe_allow_html=True)
+            
+            btn_label = "✅ SELECCIONADO (Tocar para desmarcar)" if is_selected else "👆 TOCAR PARA SELECCIONAR"
+            
+            # Un clic enorme en el botón cambia la tarjeta al instante
+            if st.button(btn_label, key=f"btn_prop_{i}", use_container_width=True):
+                st.session_state["propuesta_seleccion"][i] = not is_selected
+                st.rerun()
+                
+            st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
         
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("🚀 Solicitar Pedido Definitivo", use_container_width=True):
-            sel = df_edited_sol[df_edited_sol["seleccion_enfermera"] == True]
-            if not sel.empty:
-                for _, row in sel.iterrows():
-                    shared_data["pedidos_definitivos"].append({"ref": row.get("ref", ""), "paciente": row.get("paciente", ""), "medicamento": row.get("medicamento", ""), "cn": row.get("cn", ""), "posologia": row.get("posologia", ""), "datamatrix": "", "lote": "", "caducidad": ""})
-                restantes = df_edited_sol[df_edited_sol["seleccion_enfermera"] != True].drop(columns=['seleccion_enfermera'], errors='ignore')
-                shared_data["solicitud_pedido"] = restantes.to_dict(orient="records")
-                del st.session_state["df_propuesta_enfermera"]; st.success("¡Pedido definitivo solicitado!"); time.sleep(1.5); st.rerun()
-            else: st.warning("⚠️ Marque al menos un medicamento.")
+            seleccionados = []
+            restantes = []
+            for i, item in enumerate(shared_data["solicitud_pedido"]):
+                if st.session_state["propuesta_seleccion"].get(i, False):
+                    seleccionados.append(item)
+                else:
+                    restantes.append(item)
+            
+            if seleccionados:
+                for s in seleccionados:
+                    shared_data["pedidos_definitivos"].append({
+                        "ref": s.get("ref", ""), "paciente": s.get("paciente", ""), "medicamento": s.get("medicamento", ""),
+                        "cn": s.get("cn", ""), "posologia": s.get("posologia", ""), "datamatrix": "", "lote": "", "caducidad": ""
+                    })
+                shared_data["solicitud_pedido"] = restantes
+                del st.session_state["propuesta_seleccion"]
+                st.success(f"¡{len(seleccionados)} medicamentos solicitados para pedido definitivo!")
+                time.sleep(1.5); st.rerun()
+            else: 
+                st.warning("⚠️ Selecciona al menos un medicamento.")
             
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("⬅ Volver"): st.session_state["pagina"] = "inicio"; st.rerun()
@@ -784,7 +799,7 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
     if st.button("⬅ Volver"): st.session_state["pagina"] = "inicio"; st.rerun()
 
 # ----------------------------------------------------
-# INCIDENCIAS - ILUMINACIÓN DE FILA EN ROJO
+# INCIDENCIAS
 # ----------------------------------------------------
 elif st.session_state["pagina"] == "incidencias":
     if "incidencias" not in permisos_usuario: st.stop()
