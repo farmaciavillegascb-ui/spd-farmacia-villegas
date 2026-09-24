@@ -25,7 +25,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Estilos CSS avanzados (FORZANDO FONDOS BLANCOS)
+# Estilos CSS avanzados (AUMENTADO TAMAÑO DE BOTONES E ICONOS)
 st.markdown("""
 <style>
     .block-container { padding-top: 0.5rem !important; padding-bottom: 2rem !important; padding-left: 1rem !important; padding-right: 1rem !important; }
@@ -49,8 +49,19 @@ st.markdown("""
     div[data-baseweb="select"] > div { background-color: #ffffff !important; border: 1px solid #cbd5e1 !important; }
     div[data-baseweb="select"] * { color: #1e293b !important; }
     
-    /* FORZAR BOTONES EN BLANCO/CLARO */
-    div.stButton > button { width: 100% !important; height: 45px !important; border-radius: 10px !important; font-weight: 700 !important; font-size: 11px !important; background-color: #ffffff !important; color: #334155 !important; border: 2px solid #cbd5e1 !important; box-shadow: 0 2px 6px rgba(0,0,0,0.03) !important; transition: all 0.2s ease-in-out !important; }
+    /* FORZAR BOTONES EN BLANCO/CLARO Y AUMENTAR SU TAMAÑO/ICONOS */
+    div.stButton > button { 
+        width: 100% !important; 
+        height: 52px !important; 
+        border-radius: 10px !important; 
+        font-weight: 800 !important; 
+        font-size: 13px !important; 
+        background-color: #ffffff !important; 
+        color: #334155 !important; 
+        border: 2px solid #cbd5e1 !important; 
+        box-shadow: 0 2px 6px rgba(0,0,0,0.03) !important; 
+        transition: all 0.2s ease-in-out !important; 
+    }
     div.stButton > button:hover { background-color: #f1f5f9 !important; border-color: #0ea5e9 !important; color: #0284c7 !important; transform: translateY(-1px); }
     
     /* FORZAR FORMULARIOS EN BLANCO */
@@ -69,7 +80,8 @@ st.markdown("""
         .block-container { padding-top: 0.3rem !important; padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
         .logo-title { font-size: 16px !important; }
         .status-bar { font-size: 11px !important; padding: 4px 8px !important; }
-        div.stButton > button { height: 42px !important; font-size: 10px !important; padding: 2px !important; }
+        /* TAMAÑO DE BOTONES MÁS GRANDE PARA MÓVIL */
+        div.stButton > button { height: 48px !important; font-size: 12px !important; padding: 2px !important; }
         h2 { font-size: 1.25rem !important; text-align: center; }
         h3 { font-size: 1.1rem !important; }
     }
@@ -365,31 +377,50 @@ alert_inc = (num_inc > 0)
 if alert_ped: st.markdown("""<style>[data-testid="column"]:nth-child(5) div.stButton > button { background: linear-gradient(135deg, #ef4444, #dc2626) !important; color: white !important; }</style>""", unsafe_allow_html=True)
 if alert_inc: st.markdown("""<style>[data-testid="column"]:nth-child(6) div.stButton > button { background: linear-gradient(135deg, #ef4444, #dc2626) !important; color: white !important; }</style>""", unsafe_allow_html=True)
 
-col_inicio, col_sync, col_alta, col_baja, col_ped, col_inc, col_user, col_logout = st.columns([1,1,1,1,1.2,1.2,1,1], gap="small")
+# ----------------------------------------------------
+# NUEVA BOTONERA SUPERIOR: TODOS LOS BOTONES CON TEXTO E ICONO
+# ----------------------------------------------------
+col_inicio, col_sync, col_alta, col_baja, col_ped, col_inc, col_user, col_logout = st.columns([1.1, 1.1, 1.3, 1.3, 1.5, 1.5, 1.2, 1.1], gap="small")
 
 with col_inicio:
-    if st.button("🏠", key="btn_hdr_inicio", use_container_width=True, help="Inicio"): st.session_state["pagina"] = "inicio"; st.rerun()
+    if st.button("🏠 INICIO", key="btn_hdr_inicio", use_container_width=True): 
+        st.session_state["pagina"] = "inicio"; st.rerun()
 with col_sync:
-    if st.button("🔄", key="btn_hdr_sync", use_container_width=True, help="Sincronizar"): st.rerun()  
+    if st.button("🔄 SYNC", key="btn_hdr_sync", use_container_width=True): 
+        st.rerun()  
 with col_alta:
     if "altas" in permisos_usuario:
-        if st.button(f"ALTAS ({num_altas})" if num_altas>0 and rol_actual=="admin" else "ALTAS", key="btn_hdr_alta", use_container_width=True): st.session_state["pagina"] = "alta_paciente"; st.rerun()
+        lbl = f"➕ ALTAS ({num_altas})" if num_altas>0 and rol_actual=="admin" else "➕ ALTAS"
+        if st.button(lbl, key="btn_hdr_alta", use_container_width=True): 
+            st.session_state["pagina"] = "alta_paciente"; st.rerun()
 with col_baja:
     if "bajas" in permisos_usuario:
-        if st.button(f"BAJAS ({num_bajas})" if num_bajas>0 and rol_actual=="admin" else "BAJAS", key="btn_hdr_bajas", use_container_width=True): st.session_state["pagina"] = "baja_paciente"; st.rerun()
+        lbl = f"➖ BAJAS ({num_bajas})" if num_bajas>0 and rol_actual=="admin" else "➖ BAJAS"
+        if st.button(lbl, key="btn_hdr_bajas", use_container_width=True): 
+            st.session_state["pagina"] = "baja_paciente"; st.rerun()
 with col_ped:
     if "propuesta" in permisos_usuario or "pedidos_definitivos" in permisos_usuario:
-        if st.button(f"PEDIDOS ({num_ped})" if num_ped>0 and rol_actual=="admin" else (f"PROPUESTA ({num_prop})" if num_prop>0 else "PROPUESTA"), key="btn_hdr_ped", use_container_width=True):
-            st.session_state["pagina"] = "pedidos_definitivos_admin" if rol_actual == "admin" else "seleccion_productos_enfermera"
+        if rol_actual == "admin":
+            lbl = f"🛒 PEDIDOS ({num_ped})" if num_ped>0 else "🛒 PEDIDOS"
+            destino = "pedidos_definitivos_admin"
+        else:
+            lbl = f"📦 PROP. ({num_prop})" if num_prop>0 else "📦 PROPUESTA"
+            destino = "seleccion_productos_enfermera"
+            
+        if st.button(lbl, key="btn_hdr_ped", use_container_width=True):
+            st.session_state["pagina"] = destino
             st.rerun()
 with col_inc:
     if "incidencias" in permisos_usuario:
-        if st.button(f"INCIDENCIAS ({num_inc})" if num_inc>0 else "INCIDENCIAS", key="btn_hdr_inc", use_container_width=True): st.session_state["pagina"] = "incidencias"; st.rerun()
+        lbl = f"⚠️ INCID. ({num_inc})" if num_inc>0 else "⚠️ INCIDENCIAS"
+        if st.button(lbl, key="btn_hdr_inc", use_container_width=True): 
+            st.session_state["pagina"] = "incidencias"; st.rerun()
 with col_user:
     if "usuarios" in permisos_usuario:
-        if st.button("👥", key="btn_hdr_usu", use_container_width=True, help="Usuarios"): st.session_state["pagina"] = "gestion_usuarios"; st.rerun()
+        if st.button("👥 USUS.", key="btn_hdr_usu", use_container_width=True): 
+            st.session_state["pagina"] = "gestion_usuarios"; st.rerun()
 with col_logout:
-    if st.button("🚪", key="btn_hdr_out", use_container_width=True, help="Salir"):
+    if st.button("🚪 SALIR", key="btn_hdr_out", use_container_width=True):
         if token_url in shared_data["sesiones_activas"]: del shared_data["sesiones_activas"][token_url]
         limpiar_parametros_url(); st.session_state["usuario_autenticado"] = None; st.session_state["pagina"] = "inicio"; st.rerun()
 
@@ -673,7 +704,7 @@ elif st.session_state["pagina"] == "detalle_paciente":
     if st.button("⬅ Volver a Lista"): st.session_state["modo_incidencia"] = False; st.session_state["pagina"] = "lista_pacientes"; st.rerun()
 
 # ----------------------------------------------------
-# PROPUESTA DE PEDIDO (ENFERMERÍA) - REDISEÑADO A TARJETAS TÁCTILES
+# PROPUESTA DE PEDIDO (ENFERMERÍA) - TARJETAS TÁCTILES
 # ----------------------------------------------------
 elif st.session_state["pagina"] == "seleccion_productos_enfermera":
     if "propuesta" not in permisos_usuario: st.stop()
@@ -686,11 +717,9 @@ elif st.session_state["pagina"] == "seleccion_productos_enfermera":
     else:
         st.markdown("<p style='text-align: center; color: #64748b; font-size: 14px;'>Toca el botón gigante debajo de cada medicamento para seleccionarlo.</p>", unsafe_allow_html=True)
         
-        # Inicializamos los checks en falso la primera vez
         if "propuesta_seleccion" not in st.session_state or len(st.session_state["propuesta_seleccion"]) != len(shared_data["solicitud_pedido"]):
             st.session_state["propuesta_seleccion"] = {i: False for i in range(len(shared_data["solicitud_pedido"]))}
         
-        # Generar las tarjetas interactivas (Una por cada medicamento)
         for i, item in enumerate(shared_data["solicitud_pedido"]):
             is_selected = st.session_state["propuesta_seleccion"].get(i, False)
             
@@ -709,7 +738,6 @@ elif st.session_state["pagina"] == "seleccion_productos_enfermera":
             
             btn_label = "✅ SELECCIONADO (Tocar para desmarcar)" if is_selected else "👆 TOCAR PARA SELECCIONAR"
             
-            # Un clic enorme en el botón cambia la tarjeta al instante
             if st.button(btn_label, key=f"btn_prop_{i}", use_container_width=True):
                 st.session_state["propuesta_seleccion"][i] = not is_selected
                 st.rerun()
