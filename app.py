@@ -367,7 +367,6 @@ st.markdown(f'<div class="status-bar"><span>Sistema activo <span style="color: #
 
 num_ped = len(shared_data["pedidos_definitivos"])
 num_prop = len(shared_data["solicitud_pedido"])
-# Contar incidencias no resueltas o pendientes de validar
 num_inc = len(shared_data["incidencias_activas"])
 num_altas = len([a for a in shared_data["solicitudes_alta"] if a["estado"] == "Pendiente"])
 num_bajas = len([b for b in shared_data["solicitudes_baja"] if b["estado"] == "Pendiente"])
@@ -790,7 +789,7 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
                 parsed_ped = traducir_datamatrix(cadena_dm_pedido, BD_MEDICAMENTOS)
                 asignado = False
                 for item in shared_data["pedidos_definitivos"]:
-                    if not item.get("datamatrix") or item.get("datamatrix") == "":
+                    if not item.get("datamatrix") or item.get("datamatrix"] == "":
                         item["datamatrix"] = cadena_dm_pedido; item["lote"] = parsed_ped['lote']; item["caducidad"] = parsed_ped['caducidad']; asignado = True; break
                 if asignado: st.success(f"✅ Asignado (Lote: {parsed_ped['lote']}, Cad: {parsed_ped['caducidad']})")
                 else: st.warning("⚠️ Todos tienen DataMatrix.")
@@ -825,7 +824,7 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
     if st.button("⬅ Volver"): st.session_state["pagina"] = "inicio"; st.rerun()
 
 # ----------------------------------------------------
-# INCIDENCIAS - CON AVISO Y ROJO PASTEL
+# INCIDENCIAS - SIN LA PALABRA "FECHA"
 # ----------------------------------------------------
 elif st.session_state["pagina"] == "incidencias":
     if "incidencias" not in permisos_usuario: st.stop()
@@ -856,7 +855,7 @@ elif st.session_state["pagina"] == "incidencias":
                 <div style="font-size: 13px; margin-top: 4px; font-weight: bold; text-decoration: {text_decor};">🚨 Motivo: {item.get('motivo', '')}</div>
                 {obs_html}
                 {aviso_avanzado}
-                <div style="font-size: 12px; margin-top: 6px; opacity: 0.8;">📅 Fecha: {item.get('fecha', '')}</div>
+                <div style="font-size: 12px; margin-top: 6px; opacity: 0.8;">{item.get('fecha', '')}</div>
             </div>
             ''', unsafe_allow_html=True)
             
