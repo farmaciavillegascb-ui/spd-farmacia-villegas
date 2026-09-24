@@ -824,7 +824,7 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
     if st.button("⬅ Volver"): st.session_state["pagina"] = "inicio"; st.rerun()
 
 # ----------------------------------------------------
-# INCIDENCIAS - SIN LA PALABRA "FECHA"
+# INCIDENCIAS - CORREGIDO VISUALIZACIÓN FECHA
 # ----------------------------------------------------
 elif st.session_state["pagina"] == "incidencias":
     if "incidencias" not in permisos_usuario: st.stop()
@@ -855,9 +855,11 @@ elif st.session_state["pagina"] == "incidencias":
                 <div style="font-size: 13px; margin-top: 4px; font-weight: bold; text-decoration: {text_decor};">🚨 Motivo: {item.get('motivo', '')}</div>
                 {obs_html}
                 {aviso_avanzado}
-                <div style="font-size: 12px; margin-top: 6px; opacity: 0.8;">{item.get('fecha', '')}</div>
             </div>
             ''', unsafe_allow_html=True)
+            
+            # Mostramos la fecha limpia con Streamlit puro para evitar que aparezca el código HTML escrito
+            st.caption(f"📅 {item.get('fecha', '')}")
             
             btn_label = "🛑 MARCADA COMO RESUELTA (Tocar para deshacer)" if is_resuelta else "👆 MARCAR COMO RESUELTA"
             
