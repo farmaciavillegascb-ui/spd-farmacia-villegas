@@ -467,10 +467,30 @@ elif st.session_state["pagina"] == "baja_paciente":
         if shared_data["solicitudes_baja"]: st.dataframe(pd.DataFrame(shared_data["solicitudes_baja"])[['fecha', 'nombre', 'ref', 'estado']], use_container_width=True, hide_index=True)
             
     else:
+        st.markdown("##### ⚡ Dar de Baja Directamente")
+        paciente_directo = st.selectbox("Seleccione paciente para dar de baja:", [""] + list(shared_data["lista_pacientes"].keys()), key="select_baja_directa")
+        col_dir1, col_dir2 = st.columns(2)
+        with col_dir1:
+            if st.button("✅ Dar de Baja Directa (SIN Devolución)", use_container_width=True) and paciente_directo:
+                if paciente_directo in shared_data["lista_pacientes"]:
+                    del shared_data["lista_pacientes"][paciente_directo]
+                    st.success("¡Paciente dado de baja correctamente!"); time.sleep(1.5); st.rerun()
+        with col_dir2:
+            if st.button("📦 Dar de Baja Directa (CON Devolución)", use_container_width=True) and paciente_directo:
+                info_p = shared_data["lista_pacientes"][paciente_directo]
+                # Creamos una baja automática simulada para procesar la devolución
+                baja_rapida = {"id": str(uuid.uuid4())[:8], "etiqueta": paciente_directo, "nombre": info_p["nombre"], "ref": info_p["ref"], "estado": "Pendiente"}
+                st.session_state["baja_proceso_devolucion"] = baja_rapida
+                st.rerun()
+
+        st.markdown("---"); st.markdown("##### 📋 Propuestas Pendientes de Enfermería / Devoluciones:")
         pendientes_baja = [b for b in shared_data["solicitudes_baja"] if b["estado"] == "Pendiente"]
-        if not pendientes_baja: st.info("No hay propuestas de baja pendientes.")
+        
+        if not pendientes_baja and not st.session_state.get("baja_proceso_devolucion"): 
+            st.info("No hay propuestas de baja pendientes.")
         else:
             if "baja_proceso_devolucion" not in st.session_state: st.session_state["baja_proceso_devolucion"] = None
+            
             for baja in pendientes_baja:
                 with st.container(border=True):
                     st.markdown(f"**Paciente:** {baja['nombre']} (Ref: {baja['ref']})")
@@ -537,8 +557,32 @@ elif st.session_state["pagina"] == "alta_paciente":
                     st.error(f"❌ Motivo: {alta['observacion']}")
                     if st.button(f"🔄 Corregir", key=f"re_enviar_{alta['id']}"): st.session_state["df_alta_cargado"] = alta["datos"]; shared_data["solicitudes_alta"].remove(alta); st.rerun()
     else:
+        st.markdown("##### ⚡ Alta Directa de Paciente")
+        if "df_alta_admin_directo" not in st.session_state: st.session_state["df_alta_admin_directo"] = pd.DataFrame(columns=['Medicamento', 'CN', 'Posologia', 'Ultima Entrega'])
+        
+        with st.form("form_alta_directa_admin"):
+            ref_dir = st.text_input("Código del Paciente (Ref):")
+            nombre_dir = st.text_input("Nombre Completo:")
+            cip_dir = st.text_input("Código CIP:")
+            meds_dir_edit = st.data_editor(st.session_state["df_alta_admin_directo"], num_rows="dynamic", key="editor_alta_admin_dir", use_container_width=True)
+            if st.form_submit_button("✅ Dar de Alta Directamente", use_container_width=True):
+                if nombre_dir.strip() and ref_dir.strip() and cip_dir.strip():
+                    df_final_dir = meds_dir_edit.copy()
+                    df_final_dir['Ultima Entrega'] = ""
+                    if 'Pedido' not in df_final_dir.columns: df_final_dir['Pedido'] = False
+                    if 'Incidencia' not in df_final_dir.columns: df_final_dir['Incidencia'] = False
+                    
+                    shared_data["lista_pacientes"][f"{ref_dir.strip()} — {nombre_dir.strip()}"] = {
+                        "ref": ref_dir.strip(), "nombre": nombre_dir.strip(), "cip": cip_dir.strip(), "hoja": ref_dir.strip(), "datos": df_final_dir
+                    }
+                    st.success("¡Paciente dado de alta correctamente!")
+                    st.session_state["df_alta_admin_directo"] = pd.DataFrame(columns=['Medicamento', 'CN', 'Posologia', 'Ultima Entrega'])
+                    time.sleep(1.5); st.rerun()
+                else: st.warning("⚠️ Rellene los campos obligatorios (Ref, Nombre y CIP).")
+
+        st.markdown("---"); st.markdown("##### 📋 Propuestas de Alta Pendientes de Enfermería:")
         pendientes_alta = [a for a in shared_data["solicitudes_alta"] if a["estado"] == "Pendiente"]
-        if not pendientes_alta: st.info("No hay propuestas de alta pendientes.")
+        if not pendientes_alta: st.info("No hay propuestas de alta pendientes de enfermería.")
         else:
             for alta in pendientes_alta:
                 with st.container(border=True):
@@ -547,7 +591,7 @@ elif st.session_state["pagina"] == "alta_paciente":
                     observacion_input = st.text_input("Observación si rechaza:", key=f"obs_{alta['id']}")
                     c_val, c_rec = st.columns(2)
                     with c_val:
-                        if st.button(f"✅ Validar", key=f"val_{alta['id']}", use_container_width=True):
+                        if st.button(f"✅ Validar Propuesta", key=f"val_{alta['id']}", use_container_width=True):
                             shared_data["lista_pacientes"][f"{alta['ref']} — {alta['nombre']}"] = {"ref": alta["ref"], "nombre": alta["nombre"], "cip": alta["cip"], "hoja": alta["ref"], "datos": alta["datos"]}
                             alta["estado"] = "Validada"; st.success("¡Alta realizada!"); time.sleep(1.5); st.rerun()
                     with c_rec:
