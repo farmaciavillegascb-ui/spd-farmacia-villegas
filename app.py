@@ -789,7 +789,7 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
                 parsed_ped = traducir_datamatrix(cadena_dm_pedido, BD_MEDICAMENTOS)
                 asignado = False
                 for item in shared_data["pedidos_definitivos"]:
-                    if not item.get("datamatrix") or item.get("datamatrix"] == "":
+                    if not item.get("datamatrix") or item.get("datamatrix") == "":
                         item["datamatrix"] = cadena_dm_pedido; item["lote"] = parsed_ped['lote']; item["caducidad"] = parsed_ped['caducidad']; asignado = True; break
                 if asignado: st.success(f"✅ Asignado (Lote: {parsed_ped['lote']}, Cad: {parsed_ped['caducidad']})")
                 else: st.warning("⚠️ Todos tienen DataMatrix.")
