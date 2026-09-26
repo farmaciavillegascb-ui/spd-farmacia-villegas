@@ -1,6 +1,6 @@
 import os
 import io
-import re  # Añadida librería para procesar el texto del DataMatrix
+import re  # Librería para procesar el texto del DataMatrix
 # ----------------------------------------------------
 # FORZAR TEMA CLARO (LIGHT MODE) AUTOMÁTICAMENTE
 # ----------------------------------------------------
@@ -285,13 +285,13 @@ def cargar_datos_excel():
     return pacientes_dict
 
 # ----------------------------------------------------
-# MOTOR DE LECTURA DATAMATRIX (ACTUALIZADO GS1)
+# MOTOR DE LECTURA DATAMATRIX (ACTUALIZADO: LOTE = SERIAL / AI 21)
 # ----------------------------------------------------
 def traducir_datamatrix(raw_code, bd_medicamentos):
     res = {'marca': '', 'farmaco': '', 'tamano': '', 'cn': '', 'lote': '', 'caducidad': '', 'serie': ''}
     if not raw_code: return res
     
-    # 1. Normalizar el carácter de control GS1 (El Group Separator suele ser \x1D o ASCII 29)
+    # 1. Normalizar el carácter de control GS1
     texto = str(raw_code).replace('\x1D', '<GS>').replace(chr(29), '<GS>')
     
     try:
@@ -300,7 +300,6 @@ def traducir_datamatrix(raw_code, bd_medicamentos):
         if cn_712:
             res['cn'] = cn_712.group(1)
         else:
-            # Si viene en el GTIN (01) de 14 dígitos (ej: 0847000XXXXXXC)
             gtin_match = re.search(r'01(\d{14})', texto)
             if gtin_match:
                 gtin = gtin_match.group(1)
@@ -314,32 +313,30 @@ def traducir_datamatrix(raw_code, bd_medicamentos):
             if dd == '00': dd = '01'
             res['caducidad'] = f"{dd}/{mm}/20{yy}"
             
-        # 4. Extraer Número de Serie (AI 21)
+        # 4. Extraer el Identificador Único por Caja / Número de Serie (AI 21)
+        # Se asigna directamente a 'lote' para que aparezca en la columna Lote de la aplicación.
         serie_match = re.search(r'21(.*?)(?:<GS>|$)', texto)
         if serie_match:
-            res['serie'] = serie_match.group(1).strip()
-            
-        # 5. Extraer Lote (AI 10)
-        lote_match = re.search(r'10(.*?)(?:<GS>|$)', texto)
-        if lote_match:
-            lote_capturado = lote_match.group(1)
-            
-            # PRECAUCIÓN: Si la pistola lectora está mal configurada y omite \x1D,
-            # evitamos que el lote arrastre a la serie cortándolo si vemos un "21".
-            if '<GS>' not in texto and '21' in lote_capturado and len(lote_capturado) > 6:
-                lote_capturado = lote_capturado.split('21')[0]
-                
-            res['lote'] = lote_capturado.strip()[:20]
+            res['lote'] = serie_match.group(1).strip()[:20]
+            res['serie'] = res['lote']
+        else:
+            # Plan B: Si por algún motivo no trae AI 21, buscamos el lote tradicional (AI 10)
+            lote_match = re.search(r'10(.*?)(?:<GS>|$)', texto)
+            if lote_match:
+                lote_capturado = lote_match.group(1)
+                if '<GS>' not in texto and '21' in lote_capturado and len(lote_capturado) > 6:
+                    lote_capturado = lote_capturado.split('21')[0]
+                res['lote'] = lote_capturado.strip()[:20]
 
     except Exception:
         pass
 
-    # --- FALLBACKS (Mecanismos de seguridad) ---
+    # --- FALLBACKS ---
     if not res['cn']:
         nums = re.sub(r'\D', '', texto)
         res['cn'] = nums[-6:] if len(nums) >= 6 else "000000"
         
-    if not res['lote']: res['lote'] = "LOTE_NO_LEIDO"
+    if not res['lote']: res['lote'] = "SERIE_NO_LEIDA"
     if not res['caducidad']: res['caducidad'] = "31/12/2028"
 
     # --- BÚSQUEDA EN BASE DE DATOS DE MEDICAMENTOS ---
@@ -557,7 +554,6 @@ elif st.session_state["pagina"] == "baja_paciente":
             st.dataframe(pd.DataFrame(shared_data["solicitudes_baja"])[['fecha', 'nombre', 'ref', 'estado']], use_container_width=True, hide_index=True)
             
     else:
-        # PANTALLA DE CONFIRMACIÓN PREVIA A LA BAJA DEFINITIVA
         if "baja_a_confirmar" not in st.session_state: st.session_state["baja_a_confirmar"] = None
         
         if st.session_state["baja_a_confirmar"]:
@@ -593,9 +589,8 @@ elif st.session_state["pagina"] == "baja_paciente":
                     st.warning("Baja anulada.")
                     time.sleep(1.0); st.rerun()
                     
-            st.stop() # Evita que se muestre el resto del panel mientras se espera confirmación
+            st.stop()
 
-        # PANEL PRINCIPAL DE ADMINISTRACIÓN
         st.markdown("##### ⚡ Dar de Baja Directamente")
         paciente_directo = st.selectbox("Seleccione paciente para dar de baja:", [""] + list(shared_data["lista_pacientes"].keys()), key="select_baja_directa")
         col_dir1, col_dir2 = st.columns(2)
@@ -618,7 +613,6 @@ elif st.session_state["pagina"] == "baja_paciente":
         else:
             if "baja_proceso_devolucion" not in st.session_state: st.session_state["baja_proceso_devolucion"] = None
             
-            # Mostrar lista de pendientes SÓLO si no estamos realizando una devolución en este momento
             if not st.session_state["baja_proceso_devolucion"]:
                 for baja in pendientes_baja:
                     with st.container(border=True):
@@ -632,12 +626,10 @@ elif st.session_state["pagina"] == "baja_paciente":
                             if st.button(f"📦 Validar CON Devolución", key=f"con_dev_{baja['id']}", use_container_width=True):
                                 st.session_state["baja_proceso_devolucion"] = baja; st.rerun()
 
-            # PROCESO DE DEVOLUCIÓN ACTIVO
             if st.session_state["baja_proceso_devolucion"]:
                 baja_activa = st.session_state["baja_proceso_devolucion"]
                 st.markdown("---"); st.markdown(f"##### 📦 Proceso de Devolución para: **{baja_activa['nombre']}**")
                 
-                # BOTONES PARA CANCELAR O CAMBIAR A SIN DEVOLUCIÓN
                 c_back1, c_back2 = st.columns(2)
                 with c_back1:
                     if st.button("⬅️ Cancelar (Echar para atrás)", use_container_width=True):
@@ -672,14 +664,13 @@ elif st.session_state["pagina"] == "baja_paciente":
     if st.button("⬅ Volver al Menú", use_container_width=True): st.session_state["pagina"] = "inicio"; st.rerun()
 
 # ----------------------------------------------------
-# GESTIÓN DE ALTAS (ADMIN CON CARGA MASIVA / ENFERMERÍA)
+# GESTIÓN DE ALTAS
 # ----------------------------------------------------
 elif st.session_state["pagina"] == "alta_paciente":
     if "altas" not in permisos_usuario: st.stop()
     st.markdown("<h2 style='text-align: center; color: #1e293b; font-weight: 800;'>👴 GESTIÓN DE ALTAS</h2>", unsafe_allow_html=True)
 
     if rol_actual != "admin":
-        # ENFERMERÍA
         if "df_alta_cargado" not in st.session_state: st.session_state["df_alta_cargado"] = pd.DataFrame(columns=['Medicamento', 'CN', 'Posologia', 'Ultima Entrega'])
         if "reset_alta_enf" not in st.session_state: st.session_state["reset_alta_enf"] = 0
         
@@ -743,7 +734,6 @@ elif st.session_state["pagina"] == "alta_paciente":
                         shared_data["solicitudes_alta"].remove(alta)
                         st.rerun()
     else:
-        # FARMACIA (ADMIN)
         tabs_admin = st.tabs(["⚡ Alta Directa", "📥 Carga Masiva (Excel)", "📋 Propuestas Pendientes"])
         
         with tabs_admin[0]:
@@ -786,7 +776,7 @@ elif st.session_state["pagina"] == "alta_paciente":
 
         with tabs_admin[1]:
             st.markdown("##### 1️⃣ Descargar Plantilla")
-            st.info("Descarga este archivo Excel, rellénalo con todos los pacientes y sus medicamentos (una fila por medicamento), y súbelo en el paso 2. *(Si un paciente ya existe en el sistema, esta acción reemplazará su lista de medicación)*.")
+            st.info("Descarga este archivo Excel, rellénalo con todos los pacientes y sus medicamentos (una fila por medicamento), y súbelo en el paso 2.")
             
             df_template = pd.DataFrame(columns=["Ref_Paciente", "Nombre", "CIP", "Medicamento", "CN", "Posologia"])
             buffer = io.BytesIO()
@@ -848,14 +838,14 @@ elif st.session_state["pagina"] == "alta_paciente":
                             time.sleep(2.5)
                             st.rerun()
                         else:
-                            st.error(f"❌ El archivo no tiene las columnas correctas. Se requieren exactamente: {', '.join(req_cols)}")
+                            st.error(f"❌ El archivo no tiene las columnas correctas. Se requieren: {', '.join(req_cols)}")
                     except Exception as e:
                         st.error(f"❌ Error al procesar el archivo: {str(e)}")
 
         with tabs_admin[2]:
             st.markdown("##### 📋 Propuestas Pendientes de Enfermería:")
             pendientes_alta = [a for a in shared_data["solicitudes_alta"] if a["estado"] == "Pendiente"]
-            if not pendientes_alta: st.info("No hay propuestas de alta pendientes de enfermería.")
+            if not pendientes_alta: st.info("No hay propuestas de alta pendientes.")
             else:
                 for alta in pendientes_alta:
                     with st.container(border=True):
@@ -869,7 +859,7 @@ elif st.session_state["pagina"] == "alta_paciente":
                         with c_val:
                             if st.button(f"✅ Validar Propuesta", key=f"val_{alta['id']}", use_container_width=True):
                                 if not ref_asignado.strip():
-                                    st.error("⚠️ Debe asignar obligatoriamente un Código (Ref) para validar el alta.")
+                                    st.error("⚠️ Debe asignar obligatoriamente un Código (Ref).")
                                 else:
                                     alta["ref"] = ref_asignado.strip()
                                     shared_data["lista_pacientes"][f"{alta['ref']} — {alta['nombre']}"] = {"ref": alta["ref"], "nombre": alta["nombre"], "cip": alta["cip"], "hoja": alta["ref"], "datos": alta["datos"]}
@@ -885,7 +875,7 @@ elif st.session_state["pagina"] == "alta_paciente":
                                     st.warning("Propuesta Rechazada.")
                                     time.sleep(1.0)
                                     st.rerun()
-                                else: st.error("Escriba obligatoriamente un motivo para el rechazo.")
+                                else: st.error("Escriba un motivo para el rechazo.")
 
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("⬅ Volver", use_container_width=True): st.session_state["pagina"] = "inicio"; st.rerun()
@@ -982,7 +972,6 @@ elif st.session_state["pagina"] == "detalle_paciente":
             )
             
             if not df_edited_result.equals(df_mostrar):
-                cambio_realizado = False
                 for idx in range(len(df_edited_result)):
                     p_val = df_edited_result.loc[idx, 'Pedido'] if 'Pedido' in df_edited_result.columns else False
                     i_val = df_edited_result.loc[idx, 'Incidencia'] if 'Incidencia' in df_edited_result.columns else False
@@ -990,9 +979,9 @@ elif st.session_state["pagina"] == "detalle_paciente":
                     if p_val and i_val:
                         old_p = df_mostrar.loc[idx, 'Pedido'] if 'Pedido' in df_mostrar.columns else False
                         old_i = df_mostrar.loc[idx, 'Incidencia'] if 'Incidencia' in df_mostrar.columns else False
-                        if p_val and not old_p: df_edited_result.loc[idx, 'Incidencia'] = False; cambio_realizado = True
-                        elif i_val and not old_i: df_edited_result.loc[idx, 'Pedido'] = False; cambio_realizado = True
-                        else: df_edited_result.loc[idx, 'Incidencia'] = False; cambio_realizado = True
+                        if p_val and not old_p: df_edited_result.loc[idx, 'Incidencia'] = False
+                        elif i_val and not old_i: df_edited_result.loc[idx, 'Pedido'] = False
+                        else: df_edited_result.loc[idx, 'Incidencia'] = False
 
                 for idx in range(len(df_edited_result)):
                     if 'Pedido' in df_edited_result.columns and 'Pedido' in info["datos"].columns: info["datos"].loc[idx, 'Pedido'] = df_edited_result.loc[idx, 'Pedido']
@@ -1033,7 +1022,7 @@ elif st.session_state["pagina"] == "detalle_paciente":
     if st.button("⬅ Volver a Lista"): st.session_state["modo_incidencia"] = False; st.session_state["pagina"] = "lista_pacientes"; st.rerun()
 
 # ----------------------------------------------------
-# PROPUESTA DE PEDIDO (ENFERMERÍA) - TARJETAS TÁCTILES
+# PROPUESTA DE PEDIDO (ENFERMERÍA)
 # ----------------------------------------------------
 elif st.session_state["pagina"] == "seleccion_productos_enfermera":
     if "propuesta" not in permisos_usuario: st.stop()
@@ -1044,7 +1033,7 @@ elif st.session_state["pagina"] == "seleccion_productos_enfermera":
         if "propuesta_seleccion" in st.session_state: 
             del st.session_state["propuesta_seleccion"]
     else:
-        st.markdown("<p style='text-align: center; color: #64748b; font-size: 14px;'>Toca el botón gigante debajo de cada medicamento para seleccionarlo.</p>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: #64748b; font-size: 14px;'>Toca el botón debajo de cada medicamento para seleccionarlo.</p>", unsafe_allow_html=True)
         
         if "propuesta_seleccion" not in st.session_state or len(st.session_state["propuesta_seleccion"]) != len(shared_data["solicitud_pedido"]):
             st.session_state["propuesta_seleccion"] = {i: False for i in range(len(shared_data["solicitud_pedido"]))}
@@ -1091,7 +1080,7 @@ elif st.session_state["pagina"] == "seleccion_productos_enfermera":
                     })
                 shared_data["solicitud_pedido"] = restantes
                 del st.session_state["propuesta_seleccion"]
-                st.success(f"¡{len(seleccionados)} medicamentos solicitados para pedido definitivo!")
+                st.success(f"¡{len(seleccionados)} medicamentos solicitados!")
                 time.sleep(1.5); st.rerun()
             else: 
                 st.warning("⚠️ Selecciona al menos un medicamento.")
@@ -1110,7 +1099,7 @@ elif st.session_state["pagina"] == "solicitud_pedido_admin":
     if st.button("⬅ Volver"): st.session_state["pagina"] = "inicio"; st.rerun()
 
 # ----------------------------------------------------
-# PEDIDOS DEFINITIVOS (NUEVO SISTEMA DE ESCANEO DIRECTO Y PDF REDUCIDO)
+# PEDIDOS DEFINITIVOS
 # ----------------------------------------------------
 elif st.session_state["pagina"] == "pedidos_definitivos_admin":
     if "pedidos_definitivos" not in permisos_usuario: st.stop()
@@ -1119,11 +1108,10 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
     if not shared_data["pedidos_definitivos"]: 
         st.info("No hay pedidos definitivos pendientes.")
     else:
-        st.markdown("##### 📋 Listado de Pedidos (Clic en la columna 'DataMatrix' de la fila correspondiente y escanee):")
+        st.markdown("##### 📋 Listado de Pedidos (Clic en la columna 'DataMatrix' y escanee):")
         
         df_defs = pd.DataFrame(shared_data["pedidos_definitivos"])
         
-        # --- SOLUCIÓN ERROR CACHÉ STREAMLIT ---
         columnas_requeridas = ['ref', 'paciente', 'medicamento', 'cn', 'posologia', 'datamatrix', 'lote', 'caducidad']
         for col in columnas_requeridas:
             if col not in df_defs.columns: 
@@ -1131,7 +1119,6 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
                 
         df_defs = df_defs.astype(str)
         df_defs = df_defs.replace(["nan", "None", "<NA>"], "")
-        # ---------------------------------------
             
         df_defs_edited = st.data_editor(
             df_defs, 
@@ -1141,7 +1128,7 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
             key="editor_pedidos_definitivos", 
             column_config={
                 "datamatrix": st.column_config.TextColumn("📷 Clic y Escanear (DataMatrix)"), 
-                "lote": st.column_config.TextColumn("Lote"), 
+                "lote": st.column_config.TextColumn("Lote (Identificador Único)"), 
                 "caducidad": st.column_config.TextColumn("Caducidad"),
                 "ref": st.column_config.TextColumn("Ref.", disabled=True),
                 "paciente": st.column_config.TextColumn("Paciente", disabled=True),
@@ -1156,7 +1143,6 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
             nuevo_dm = str(df_defs_edited.iloc[i].get("datamatrix", "")).strip()
             viejo_dm = str(shared_data["pedidos_definitivos"][i].get("datamatrix", "")).strip() if i < len(shared_data["pedidos_definitivos"]) else ""
             
-            # Detectar si hay un nuevo escaneo
             if nuevo_dm and nuevo_dm != viejo_dm:
                 parsed = traducir_datamatrix(nuevo_dm, BD_MEDICAMENTOS)
                 df_defs_edited.at[i, "lote"] = parsed["lote"]
@@ -1171,7 +1157,6 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
         st.markdown("<br>", unsafe_allow_html=True)
         col_pdf, col_act = st.columns(2)
         with col_pdf:
-            # PDF SIN LA COLUMNA DATAMATRIX Y COLUMNAS AJUSTADAS
             pdf = PDFAlbaran(orientation='L', unit='mm', format='A4')
             pdf.add_page()
             pdf.set_font("Arial", 'B', 14)
@@ -1183,8 +1168,8 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
             pdf.cell(0, 10, limpiar_texto_pdf(f"ALBARAN DE ENTREGA - Fecha: {datetime.now().strftime('%d/%m/%Y %H:%M')}"), ln=True, align='L')
             pdf.ln(5)
             
-            headers = ["Ref.", "Paciente", "Medicamento", "C.N.", "Posologia", "Lote", "Caducidad"]
-            col_widths = [20, 60, 90, 25, 35, 25, 22] 
+            headers = ["Ref.", "Paciente", "Medicamento", "C.N.", "Posologia", "Identificador Caja", "Caducidad"]
+            col_widths = [20, 60, 90, 25, 35, 30, 22] 
             align_list = ['C', 'L', 'L', 'C', 'C', 'C', 'C']
             
             rows_data = [[str(r.get('ref', '')), str(r.get('paciente', '')), str(r.get('medicamento', '')), str(r.get('cn', '')), str(r.get('posologia', '')), str(r.get('lote', '')), str(r.get('caducidad', ''))] for r in shared_data["pedidos_definitivos"]]
@@ -1194,7 +1179,6 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
         
         with col_act:
             if st.button("📌 Actualizar y Limpiar", use_container_width=True):
-                # Actualizar historial de entregas
                 fecha_hoy = datetime.now().strftime("%d/%m/%Y")
                 for item in shared_data["pedidos_definitivos"]:
                     for pk, p_info in shared_data["lista_pacientes"].items():
@@ -1212,7 +1196,7 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
     if st.button("⬅ Volver"): st.session_state["pagina"] = "inicio"; st.rerun()
 
 # ----------------------------------------------------
-# INCIDENCIAS - IMPRESIÓN PDF AGRUPADA POR PACIENTE
+# INCIDENCIAS
 # ----------------------------------------------------
 elif st.session_state["pagina"] == "incidencias":
     if "incidencias" not in permisos_usuario: st.stop()
@@ -1221,12 +1205,10 @@ elif st.session_state["pagina"] == "incidencias":
     if not shared_data["incidencias_activas"]: 
         st.info("No hay incidencias activas.")
     else:
-        # Añadido: Botón para imprimir PDF estructurado
         col_inst, col_print = st.columns([0.6, 0.4])
         with col_inst:
             st.markdown("<p style='text-align: left; color: #64748b; font-size: 14px;'>Toca el botón debajo de cada incidencia para marcarla como solucionada.</p>", unsafe_allow_html=True)
         with col_print:
-            # Generamos el PDF al vuelo y lo ponemos en un botón de descarga
             pdf_bytes = generar_pdf_incidencias(shared_data["incidencias_activas"])
             st.download_button("🖨️ Imprimir PDF (Agrupado por Paciente)", data=pdf_bytes, file_name="Reporte_Incidencias.pdf", mime="application/pdf", use_container_width=True)
 
@@ -1235,7 +1217,6 @@ elif st.session_state["pagina"] == "incidencias":
         for i, item in enumerate(shared_data["incidencias_activas"]):
             is_resuelta = item.get("resuelta_por_enfermera", False)
             
-            # Color rojo pastel si está marcada por la enfermera
             bg_color = "#ffd1d1" if is_resuelta else "#ffffff"
             border_color = "#ff7b7b" if is_resuelta else "#cbd5e1"
             text_color = "#5c1d1d" if is_resuelta else "#1e293b"
