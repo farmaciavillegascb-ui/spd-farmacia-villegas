@@ -537,27 +537,28 @@ elif st.session_state["pagina"] == "alta_paciente":
     if rol_actual != "admin":
         # ENFERMERÍA
         if "df_alta_cargado" not in st.session_state: st.session_state["df_alta_cargado"] = pd.DataFrame(columns=['Medicamento', 'CN', 'Posologia', 'Ultima Entrega'])
-        if "alta_input_ref" not in st.session_state: st.session_state["alta_input_ref"] = ""
-        if "alta_input_nombre" not in st.session_state: st.session_state["alta_input_nombre"] = ""
-        if "alta_input_cip" not in st.session_state: st.session_state["alta_input_cip"] = ""
+        if "reset_alta_enf" not in st.session_state: st.session_state["reset_alta_enf"] = 0
+        
+        rk = st.session_state["reset_alta_enf"]
 
         st.markdown("##### 📝 Nueva Propuesta de Alta")
         with st.container(border=True):
-            st.text_input("Código del Paciente (Ref) - [Lo asignará Farmacia]:", key="alta_input_ref")
-            st.text_input("Nombre Completo (Obligatorio):", key="alta_input_nombre")
-            st.text_input("Código CIP (Obligatorio):", key="alta_input_cip")
+            # Usamos claves dinámicas (rk) para poder vaciarlas sin error
+            ref_input = st.text_input("Código del Paciente (Ref) - [Lo asignará Farmacia]:", value=st.session_state.get("alta_input_ref", ""), key=f"ref_enf_{rk}")
+            nom_input = st.text_input("Nombre Completo (Obligatorio):", value=st.session_state.get("alta_input_nombre", ""), key=f"nom_enf_{rk}")
+            cip_input = st.text_input("Código CIP (Obligatorio):", value=st.session_state.get("alta_input_cip", ""), key=f"cip_enf_{rk}")
             
-            meds_editadas = st.data_editor(st.session_state["df_alta_cargado"], num_rows="dynamic", key="editor_alta_paciente", use_container_width=True)
+            meds_editadas = st.data_editor(st.session_state["df_alta_cargado"], num_rows="dynamic", key=f"editor_alta_paciente_{rk}", use_container_width=True)
             
             if st.button("📤 Enviar Propuesta de Alta", use_container_width=True):
-                if st.session_state["alta_input_nombre"].strip() and st.session_state["alta_input_cip"].strip():
+                if nom_input.strip() and cip_input.strip():
                     df_final = meds_editadas.copy()
                     df_final['Ultima Entrega'] = ""
                     shared_data["solicitudes_alta"].append({
                         "id": str(uuid.uuid4())[:8], 
-                        "nombre": st.session_state["alta_input_nombre"].strip(), 
-                        "cip": st.session_state["alta_input_cip"].strip(), 
-                        "ref": st.session_state["alta_input_ref"].strip(), 
+                        "nombre": nom_input.strip(), 
+                        "cip": cip_input.strip(), 
+                        "ref": ref_input.strip(), 
                         "datos": df_final, 
                         "estado": "Pendiente", 
                         "observacion": "", 
@@ -565,12 +566,12 @@ elif st.session_state["pagina"] == "alta_paciente":
                     })
                     st.success("¡Propuesta enviada correctamente!")
                     
-                    # Limpiar ficha completamente para solicitar otra alta
+                    # Limpieza segura cambiando la clave dinámica
+                    st.session_state["alta_input_ref"] = ""
                     st.session_state["alta_input_nombre"] = ""
                     st.session_state["alta_input_cip"] = ""
-                    st.session_state["alta_input_ref"] = ""
                     st.session_state["df_alta_cargado"] = pd.DataFrame(columns=['Medicamento', 'CN', 'Posologia', 'Ultima Entrega'])
-                    if "editor_alta_paciente" in st.session_state: del st.session_state["editor_alta_paciente"]
+                    st.session_state["reset_alta_enf"] += 1 
                     time.sleep(1.0)
                     st.rerun()
                 else: 
@@ -600,27 +601,27 @@ elif st.session_state["pagina"] == "alta_paciente":
                         st.session_state["alta_input_cip"] = alta["cip"]
                         st.session_state["alta_input_ref"] = alta["ref"]
                         st.session_state["df_alta_cargado"] = alta["datos"]
-                        if "editor_alta_paciente" in st.session_state: del st.session_state["editor_alta_paciente"]
+                        st.session_state["reset_alta_enf"] += 1 # Recargar formulario
                         shared_data["solicitudes_alta"].remove(alta)
                         st.rerun()
     else:
         # FARMACIA (ADMIN)
         if "df_alta_admin_directo" not in st.session_state: st.session_state["df_alta_admin_directo"] = pd.DataFrame(columns=['Medicamento', 'CN', 'Posologia', 'Ultima Entrega'])
-        if "admin_alta_ref" not in st.session_state: st.session_state["admin_alta_ref"] = ""
-        if "admin_alta_nombre" not in st.session_state: st.session_state["admin_alta_nombre"] = ""
-        if "admin_alta_cip" not in st.session_state: st.session_state["admin_alta_cip"] = ""
+        if "reset_alta_admin" not in st.session_state: st.session_state["reset_alta_admin"] = 0
+        
+        rk_admin = st.session_state["reset_alta_admin"]
 
         st.markdown("##### ⚡ Alta Directa de Paciente")
         with st.container(border=True):
-            st.text_input("Código del Paciente (Ref):", key="admin_alta_ref")
-            st.text_input("Nombre Completo:", key="admin_alta_nombre")
-            st.text_input("Código CIP:", key="admin_alta_cip")
-            meds_dir_edit = st.data_editor(st.session_state["df_alta_admin_directo"], num_rows="dynamic", key="editor_alta_admin_dir", use_container_width=True)
+            ref_dir = st.text_input("Código del Paciente (Ref):", value=st.session_state.get("admin_alta_ref", ""), key=f"ref_adm_{rk_admin}")
+            nom_dir = st.text_input("Nombre Completo:", value=st.session_state.get("admin_alta_nombre", ""), key=f"nom_adm_{rk_admin}")
+            cip_dir = st.text_input("Código CIP:", value=st.session_state.get("admin_alta_cip", ""), key=f"cip_adm_{rk_admin}")
+            meds_dir_edit = st.data_editor(st.session_state["df_alta_admin_directo"], num_rows="dynamic", key=f"editor_alta_admin_{rk_admin}", use_container_width=True)
             
             if st.button("✅ Dar de Alta Directamente", use_container_width=True):
-                r_str = st.session_state["admin_alta_ref"].strip()
-                n_str = st.session_state["admin_alta_nombre"].strip()
-                c_str = st.session_state["admin_alta_cip"].strip()
+                r_str = ref_dir.strip()
+                n_str = nom_dir.strip()
+                c_str = cip_dir.strip()
 
                 if n_str and r_str and c_str:
                     df_final_dir = meds_dir_edit.copy()
@@ -633,12 +634,12 @@ elif st.session_state["pagina"] == "alta_paciente":
                     }
                     st.success("¡Paciente dado de alta correctamente!")
                     
-                    # Limpiar ficha completamente para dar de alta a otro
+                    # Limpieza segura cambiando la clave dinámica
                     st.session_state["admin_alta_ref"] = ""
                     st.session_state["admin_alta_nombre"] = ""
                     st.session_state["admin_alta_cip"] = ""
                     st.session_state["df_alta_admin_directo"] = pd.DataFrame(columns=['Medicamento', 'CN', 'Posologia', 'Ultima Entrega'])
-                    if "editor_alta_admin_dir" in st.session_state: del st.session_state["editor_alta_admin_dir"]
+                    st.session_state["reset_alta_admin"] += 1
                     time.sleep(1.0)
                     st.rerun()
                 else: 
