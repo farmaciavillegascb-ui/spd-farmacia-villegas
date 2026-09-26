@@ -1,5 +1,6 @@
 import os
 import io
+import re  # Añadida librería para procesar el texto del DataMatrix
 # ----------------------------------------------------
 # FORZAR TEMA CLARO (LIGHT MODE) AUTOMÁTICAMENTE
 # ----------------------------------------------------
@@ -284,53 +285,73 @@ def cargar_datos_excel():
     return pacientes_dict
 
 # ----------------------------------------------------
-# MOTOR DE LECTURA DATAMATRIX
+# MOTOR DE LECTURA DATAMATRIX (ACTUALIZADO GS1)
 # ----------------------------------------------------
 def traducir_datamatrix(raw_code, bd_medicamentos):
     res = {'marca': '', 'farmaco': '', 'tamano': '', 'cn': '', 'lote': '', 'caducidad': '', 'serie': ''}
     if not raw_code: return res
-    clean = str(raw_code).replace('\x1D', '<GS>')
+    
+    # 1. Normalizar el carácter de control GS1 (El Group Separator suele ser \x1D o ASCII 29)
+    texto = str(raw_code).replace('\x1D', '<GS>').replace(chr(29), '<GS>')
+    
     try:
-        if '712' in clean:
-            idx = clean.find('712')
-            if len(clean) >= idx + 9: res['cn'] = clean[idx+3 : idx+9].strip()
-        if not res['cn'] and '01' in clean:
-            idx = clean.find('01')
-            if len(clean) >= idx + 16:
-                gtin = clean[idx+2 : idx+16]
-                if len(gtin) == 14: res['cn'] = gtin[7:13]
-        if not res['cn'] and len(clean) >= 6: res['cn'] = clean[-6:].strip()
+        # 2. Extraer el Código Nacional (CN)
+        cn_712 = re.search(r'712(\d{6})', texto)
+        if cn_712:
+            res['cn'] = cn_712.group(1)
+        else:
+            # Si viene en el GTIN (01) de 14 dígitos (ej: 0847000XXXXXXC)
+            gtin_match = re.search(r'01(\d{14})', texto)
+            if gtin_match:
+                gtin = gtin_match.group(1)
+                res['cn'] = gtin[7:13]
 
-        if '17' in clean:
-            idx = clean.find('17')
-            if len(clean) >= idx + 8:
-                cad_raw = clean[idx+2 : idx+8]
-                if len(cad_raw) == 6 and cad_raw.isdigit():
-                    yy, mm, dd = cad_raw[0:2], cad_raw[2:4], cad_raw[4:6]
-                    if dd == '00': dd = '01'
-                    res['caducidad'] = f"{dd}/{mm}/20{yy}"
-        if not res['caducidad']: res['caducidad'] = "31/12/2028"
+        # 3. Extraer Caducidad (AI 17): Siempre son 6 dígitos AAMMDD
+        cad_match = re.search(r'17(\d{6})', texto)
+        if cad_match:
+            aammdd = cad_match.group(1)
+            yy, mm, dd = aammdd[0:2], aammdd[2:4], aammdd[4:6]
+            if dd == '00': dd = '01'
+            res['caducidad'] = f"{dd}/{mm}/20{yy}"
+            
+        # 4. Extraer Número de Serie (AI 21)
+        serie_match = re.search(r'21(.*?)(?:<GS>|$)', texto)
+        if serie_match:
+            res['serie'] = serie_match.group(1).strip()
+            
+        # 5. Extraer Lote (AI 10)
+        lote_match = re.search(r'10(.*?)(?:<GS>|$)', texto)
+        if lote_match:
+            lote_capturado = lote_match.group(1)
+            
+            # PRECAUCIÓN: Si la pistola lectora está mal configurada y omite \x1D,
+            # evitamos que el lote arrastre a la serie cortándolo si vemos un "21".
+            if '<GS>' not in texto and '21' in lote_capturado and len(lote_capturado) > 6:
+                lote_capturado = lote_capturado.split('21')[0]
+                
+            res['lote'] = lote_capturado.strip()[:20]
 
-        idx_10 = clean.find('10')
-        if idx_10 != -1:
-            sub = clean[idx_10 + 2:]
-            if '<GS>' in sub: res['lote'] = sub.split('<GS>')[0]
-            else:
-                for ai in ['21', '17', '712', '01']:
-                    if ai in sub: sub = sub.split(ai)[0]
-                res['lote'] = sub[:20].strip()
-        if not res['lote']: res['lote'] = "LOTE01"
     except Exception:
-        res['cn'] = clean[-6:] if len(clean)>=6 else "000000"
-        res['lote'] = "LOTE01"; res['caducidad'] = "31/12/2028"
+        pass
+
+    # --- FALLBACKS (Mecanismos de seguridad) ---
+    if not res['cn']:
+        nums = re.sub(r'\D', '', texto)
+        res['cn'] = nums[-6:] if len(nums) >= 6 else "000000"
         
+    if not res['lote']: res['lote'] = "LOTE_NO_LEIDO"
+    if not res['caducidad']: res['caducidad'] = "31/12/2028"
+
+    # --- BÚSQUEDA EN BASE DE DATOS DE MEDICAMENTOS ---
     cn_busqueda = res['cn'].zfill(6)
     if cn_busqueda in bd_medicamentos:
         datos = bd_medicamentos[cn_busqueda]
         res['marca'] = str(datos.get('marca', ''))
         res['farmaco'] = str(datos.get('farmaco', ''))
         res['tamano'] = str(datos.get('tamano', ''))
-    else: res['farmaco'] = f"Medicamento (CN: {res['cn']})"
+    else: 
+        res['farmaco'] = f"Medicamento (CN: {res['cn']})"
+        
     return res
 
 @st.cache_resource
@@ -658,7 +679,7 @@ elif st.session_state["pagina"] == "alta_paciente":
     st.markdown("<h2 style='text-align: center; color: #1e293b; font-weight: 800;'>👴 GESTIÓN DE ALTAS</h2>", unsafe_allow_html=True)
 
     if rol_actual != "admin":
-        # ENFERMERÍA (SIN CAMBIOS)
+        # ENFERMERÍA
         if "df_alta_cargado" not in st.session_state: st.session_state["df_alta_cargado"] = pd.DataFrame(columns=['Medicamento', 'CN', 'Posologia', 'Ultima Entrega'])
         if "reset_alta_enf" not in st.session_state: st.session_state["reset_alta_enf"] = 0
         
@@ -722,7 +743,7 @@ elif st.session_state["pagina"] == "alta_paciente":
                         shared_data["solicitudes_alta"].remove(alta)
                         st.rerun()
     else:
-        # FARMACIA (ADMIN) - PESTAÑAS INCLUYENDO CARGA MASIVA
+        # FARMACIA (ADMIN)
         tabs_admin = st.tabs(["⚡ Alta Directa", "📥 Carga Masiva (Excel)", "📋 Propuestas Pendientes"])
         
         with tabs_admin[0]:
@@ -767,7 +788,6 @@ elif st.session_state["pagina"] == "alta_paciente":
             st.markdown("##### 1️⃣ Descargar Plantilla")
             st.info("Descarga este archivo Excel, rellénalo con todos los pacientes y sus medicamentos (una fila por medicamento), y súbelo en el paso 2. *(Si un paciente ya existe en el sistema, esta acción reemplazará su lista de medicación)*.")
             
-            # Generar excel de plantilla en memoria
             df_template = pd.DataFrame(columns=["Ref_Paciente", "Nombre", "CIP", "Medicamento", "CN", "Posologia"])
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
@@ -790,16 +810,13 @@ elif st.session_state["pagina"] == "alta_paciente":
                         df_carga = pd.read_excel(archivo_subido)
                         req_cols = ["Ref_Paciente", "Nombre", "CIP", "Medicamento", "CN", "Posologia"]
                         
-                        # Validar si están las columnas (independiente de mayúsculas o espacios)
                         cols_excel = [str(c).strip().lower() for c in df_carga.columns]
                         req_cols_lower = [c.lower() for c in req_cols]
                         
                         if all(rc in cols_excel for rc in req_cols_lower):
-                            # Estandarizar nombres de columnas
                             map_cols = {c: req_cols[req_cols_lower.index(str(c).strip().lower())] for c in df_carga.columns if str(c).strip().lower() in req_cols_lower}
                             df_carga = df_carga.rename(columns=map_cols)
                             
-                            # Limpiar filas vacías sin referencia o nombre
                             df_carga = df_carga.dropna(subset=['Ref_Paciente', 'Nombre'])
                             
                             grupos = df_carga.groupby('Ref_Paciente')
@@ -815,7 +832,6 @@ elif st.session_state["pagina"] == "alta_paciente":
                                 df_meds['Pedido'] = False
                                 df_meds['Incidencia'] = False
                                 
-                                # Convertir CN a string sin decimales (.0)
                                 df_meds['CN'] = df_meds['CN'].astype(str).str.replace(r'\.0$', '', regex=True)
                                 
                                 etiqueta = f"{ref_str} — {nombre_str}"
@@ -1239,7 +1255,6 @@ elif st.session_state["pagina"] == "incidencias":
             </div>
             ''', unsafe_allow_html=True)
             
-            # Mostramos la fecha limpia con Streamlit puro para evitar que aparezca el código HTML escrito
             st.caption(f"📅 {item.get('fecha', '')}")
             
             btn_label = "🛑 MARCADA COMO RESUELTA (Tocar para deshacer)" if is_resuelta else "👆 MARCAR COMO RESUELTA"
