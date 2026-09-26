@@ -285,7 +285,7 @@ def cargar_datos_excel():
     return pacientes_dict
 
 # ----------------------------------------------------
-# MOTOR DE LECTURA DATAMATRIX (ACTUALIZADO: LOTE = SERIAL / AI 21)
+# MOTOR DE LECTURA DATAMATRIX (ACTUALIZADO: LOTE = AI 10)
 # ----------------------------------------------------
 def traducir_datamatrix(raw_code, bd_medicamentos):
     res = {'marca': '', 'farmaco': '', 'tamano': '', 'cn': '', 'lote': '', 'caducidad': '', 'serie': ''}
@@ -313,20 +313,19 @@ def traducir_datamatrix(raw_code, bd_medicamentos):
             if dd == '00': dd = '01'
             res['caducidad'] = f"{dd}/{mm}/20{yy}"
             
-        # 4. Extraer el Identificador Único por Caja / Número de Serie (AI 21)
-        # Se asigna directamente a 'lote' para que aparezca en la columna Lote de la aplicación.
+        # 4. Extraer el Número de Lote de Fabricación (AI 10)
+        # Asignado directamente a la variable 'lote' para que aparezca en la columna Lote
+        lote_match = re.search(r'10(.*?)(?:<GS>|$)', texto)
+        if lote_match:
+            lote_capturado = lote_match.group(1)
+            if '<GS>' not in texto and '21' in lote_capturado and len(lote_capturado) > 6:
+                lote_capturado = lote_capturado.split('21')[0]
+            res['lote'] = lote_capturado.strip()[:20]
+
+        # 5. Extraer Número de Serie por si acaso (AI 21)
         serie_match = re.search(r'21(.*?)(?:<GS>|$)', texto)
         if serie_match:
-            res['lote'] = serie_match.group(1).strip()[:20]
-            res['serie'] = res['lote']
-        else:
-            # Plan B: Si por algún motivo no trae AI 21, buscamos el lote tradicional (AI 10)
-            lote_match = re.search(r'10(.*?)(?:<GS>|$)', texto)
-            if lote_match:
-                lote_capturado = lote_match.group(1)
-                if '<GS>' not in texto and '21' in lote_capturado and len(lote_capturado) > 6:
-                    lote_capturado = lote_capturado.split('21')[0]
-                res['lote'] = lote_capturado.strip()[:20]
+            res['serie'] = serie_match.group(1).strip()
 
     except Exception:
         pass
@@ -336,7 +335,7 @@ def traducir_datamatrix(raw_code, bd_medicamentos):
         nums = re.sub(r'\D', '', texto)
         res['cn'] = nums[-6:] if len(nums) >= 6 else "000000"
         
-    if not res['lote']: res['lote'] = "SERIE_NO_LEIDA"
+    if not res['lote']: res['lote'] = "LOTE_NO_LEIDO"
     if not res['caducidad']: res['caducidad'] = "31/12/2028"
 
     # --- BÚSQUEDA EN BASE DE DATOS DE MEDICAMENTOS ---
@@ -1128,7 +1127,7 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
             key="editor_pedidos_definitivos", 
             column_config={
                 "datamatrix": st.column_config.TextColumn("📷 Clic y Escanear (DataMatrix)"), 
-                "lote": st.column_config.TextColumn("Lote (Identificador Único)"), 
+                "lote": st.column_config.TextColumn("Lote de Fabricación"), 
                 "caducidad": st.column_config.TextColumn("Caducidad"),
                 "ref": st.column_config.TextColumn("Ref.", disabled=True),
                 "paciente": st.column_config.TextColumn("Paciente", disabled=True),
@@ -1168,7 +1167,7 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
             pdf.cell(0, 10, limpiar_texto_pdf(f"ALBARAN DE ENTREGA - Fecha: {datetime.now().strftime('%d/%m/%Y %H:%M')}"), ln=True, align='L')
             pdf.ln(5)
             
-            headers = ["Ref.", "Paciente", "Medicamento", "C.N.", "Posologia", "Identificador Caja", "Caducidad"]
+            headers = ["Ref.", "Paciente", "Medicamento", "C.N.", "Posologia", "Lote", "Caducidad"]
             col_widths = [20, 60, 90, 25, 35, 30, 22] 
             align_list = ['C', 'L', 'L', 'C', 'C', 'C', 'C']
             
