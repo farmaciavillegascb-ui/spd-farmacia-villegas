@@ -284,7 +284,7 @@ def cargar_datos_excel():
     return pacientes_dict
 
 # ----------------------------------------------------
-# MOTOR DE LECTURA DATAMATRIX (VERSIÓN SEGURA ANTI-FALSOS POSITIVOS)
+# MOTOR DE LECTURA DATAMATRIX (VERSIÓN BLINDADA CONTRA FALSOS 10/17 EN GTIN)
 # ----------------------------------------------------
 def traducir_datamatrix(raw_code, bd_medicamentos):
     res = {'marca': '', 'farmaco': '', 'tamano': '', 'cn': '', 'lote': '', 'caducidad': '', 'serie': ''}
@@ -295,8 +295,10 @@ def traducir_datamatrix(raw_code, bd_medicamentos):
     texto = texto.replace('\x1D', '<GS>').replace(chr(29), '<GS>').replace('\u001d', '<GS>')
     texto = re.sub(r'^\)?>?0?5?', '', texto) # Limpiar prefijos comunes de pistola lectora
     
+    resto_texto = texto
+    
     try:
-        # 2. Extraer el Código Nacional (CN) - Soporta 712XXXXXX y GTIN 01XXXXXXXXXXXXXX
+        # 2. Extraer el Código Nacional (CN) y el GTIN al principio del código
         cn_712 = re.search(r'712(\d{6})', texto)
         if cn_712:
             res['cn'] = cn_712.group(1)
@@ -304,36 +306,47 @@ def traducir_datamatrix(raw_code, bd_medicamentos):
             gtin_match = re.search(r'(?:^|<GS>)01(\d{14})', texto)
             if not gtin_match:
                 gtin_match = re.search(r'01(\d{14})', texto)
+                
             if gtin_match:
                 gtin = gtin_match.group(1)
                 res['cn'] = gtin[7:13]
+                
+                # CLAVE: Cortamos el texto justo después de terminar el GTIN (16 caracteres: '01' + 14 dígitos).
+                # Esto evita que un '10' o '17' oculto dentro del número de barras del GTIN confunda al lector.
+                resto_texto = texto[gtin_match.end():]
 
-        # 3. Extraer Caducidad (AI 17) con validación estricta de mes (01-12) y día (01-31)
-        cad_match = re.search(r'17(\d{2})(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])', texto)
+        # 3. Extraer Caducidad (AI 17) buscando primero en el resto de la cadena y con validación estricta
+        cad_match = re.search(r'17(\d{2})(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])', resto_texto)
+        if not cad_match:
+            cad_match = re.search(r'17(\d{2})(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])', texto) # Fallback global
+            
         if cad_match:
             yy, mm, dd = cad_match.groups()
             if dd == '00': dd = '01'
             res['caducidad'] = f"{dd}/{mm}/20{yy}"
         else:
-            # Fallback secundario si viene con formato de 6 dígitos genérico
-            cad_fallback = re.search(r'17(\d{6})', texto)
+            cad_fallback = re.search(r'17(\d{6})', resto_texto)
             if cad_fallback:
                 aammdd = cad_fallback.group(1)
                 yy, mm, dd = aammdd[0:2], aammdd[2:4], aammdd[4:6]
                 if dd == '00': dd = '01'
                 res['caducidad'] = f"{dd}/{mm}/20{yy}"
             
-        # 4. Extraer el Número de Lote de Fabricación (AI 10) de forma inteligente
-        # Usamos lookahead estricto para que se detenga ante el verdadero identificador de caducidad válido, serie o <GS>
-        lote_match = re.search(r'10(.*?)(?=<GS>|17\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])|21|\b712\d{6}|$)', texto)
+        # 4. Extraer el Número de Lote (AI 10) analizando únicamente el cuerpo limpio posterior al GTIN
+        lote_match = re.search(r'10(.*?)(?=<GS>|17\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])|21|\b712\d{6}|$)', resto_texto)
         if not lote_match:
-            lote_match = re.search(r'10(.*?)(?=<GS>|17\d{6}|21|\b712\d{6}|$)', texto)
+            lote_match = re.search(r'10(.*?)(?=<GS>|17\d{6}|21|\b712\d{6}|$)', resto_texto)
+        if not lote_match:
+            lote_match = re.search(r'10(.*?)(?=<GS>|17|21|$)', texto) # Fallback global
             
         if lote_match:
             res['lote'] = lote_match.group(1).strip()[:20]
 
         # 5. Extraer Número de Serie (AI 21)
-        serie_match = re.search(r'21(.*?)(?:<GS>|$)', texto)
+        serie_match = re.search(r'21(.*?)(?:<GS>|17|10|$)', resto_texto)
+        if not serie_match:
+            serie_match = re.search(r'21(.*?)(?:<GS>|$)', texto)
+            
         if serie_match:
             res['serie'] = serie_match.group(1).strip()
 
