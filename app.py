@@ -17,7 +17,7 @@ import time
 import uuid
 import unicodedata
 from fpdf import FPDF
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Configuración de la página optimizada
 st.set_page_config(
@@ -284,19 +284,17 @@ def cargar_datos_excel():
     return pacientes_dict
 
 # ----------------------------------------------------
-# MOTOR DE LECTURA DATAMATRIX (VERSIÓN DEFINITIVA INDEPENDIENTE DEL ORDEN)
+# MOTOR DE LECTURA DATAMATRIX (INDEPENDIENTE DEL ORDEN)
 # ----------------------------------------------------
 def traducir_datamatrix(raw_code, bd_medicamentos):
     res = {'marca': '', 'farmaco': '', 'tamano': '', 'cn': '', 'lote': '', 'caducidad': '', 'serie': ''}
     if not raw_code: return res
     
-    # 1. Normalizar caracteres de control GS1 y cabeceras ISO/IEC habituales
     texto = str(raw_code).strip()
     texto = texto.replace('\x1D', '<GS>').replace(chr(29), '<GS>').replace('\u001d', '<GS>')
-    texto = re.sub(r'^\)?>?0?5?', '', texto) # Limpiar prefijos comunes de pistola lectora
+    texto = re.sub(r'^\)?>?0?5?', '', texto)
     
     try:
-        # 2. Extraer el Código Nacional (CN) a partir del GTIN o código 712
         cn_712 = re.search(r'712(\d{6})', texto)
         if cn_712:
             res['cn'] = cn_712.group(1)
@@ -309,7 +307,6 @@ def traducir_datamatrix(raw_code, bd_medicamentos):
                 gtin = gtin_match.group(1)
                 res['cn'] = gtin[7:13]
 
-        # 3. Extraer Caducidad (AI 17): 6 dígitos (AAMMDD) con validación estricta de mes (01-12) y día (01-31)
         cad_match = re.search(r'17(\d{2})(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])', texto)
         if cad_match:
             yy, mm, dd = cad_match.groups()
@@ -323,8 +320,6 @@ def traducir_datamatrix(raw_code, bd_medicamentos):
                 if dd == '00': dd = '01'
                 res['caducidad'] = f"{dd}/{mm}/20{yy}"
             
-        # 4. Extraer el Número de Lote (AI 10): Independiente del orden en que aparezca
-        # Busca '10' precedido por límite de palabra o inicio, y termina en el siguiente identificador oficial o fin de cadena
         lote_match = re.search(r'(?:^|[^\d])10([A-Za-z0-9\-/\.]+?)(?=<GS>|17\d{6}|21|01|\b712|$)', texto)
         if not lote_match:
             lote_match = re.search(r'10([A-Za-z0-9\-/\.]+?)(?=<GS>|17|21|01|$)', texto)
@@ -332,7 +327,6 @@ def traducir_datamatrix(raw_code, bd_medicamentos):
         if lote_match:
             res['lote'] = lote_match.group(1).strip()[:20]
 
-        # 5. Extraer Número de Serie (AI 21): Independiente del orden
         serie_match = re.search(r'(?:^|[^\d])21([A-Za-z0-9\-]+?)(?=<GS>|17|10|01|\b712|$)', texto)
         if not serie_match:
             serie_match = re.search(r'21([A-Za-z0-9\-]+?)(?=<GS>|17|10|01|$)', texto)
@@ -343,7 +337,6 @@ def traducir_datamatrix(raw_code, bd_medicamentos):
     except Exception:
         pass
 
-    # --- FALLBACKS Y LIMPIEZA FINAL ---
     if not res['cn']:
         nums = re.sub(r'\D', '', texto)
         res['cn'] = nums[-6:] if len(nums) >= 6 else "000000"
@@ -351,7 +344,6 @@ def traducir_datamatrix(raw_code, bd_medicamentos):
     if not res['lote']: res['lote'] = "LOTE_NO_LEIDO"
     if not res['caducidad']: res['caducidad'] = "31/12/2028"
 
-    # --- BÚSQUEDA EN BASE DE DATOS DE MEDICAMENTOS ---
     cn_busqueda = res['cn'].zfill(6)
     if cn_busqueda in bd_medicamentos:
         datos = bd_medicamentos[cn_busqueda]
@@ -447,6 +439,15 @@ if st.session_state["usuario_autenticado"] is None:
 
 rol_actual = st.session_state["rol_usuario"]
 permisos_usuario = shared_data["roles_sistema"].get(rol_actual, [])
+
+# LIMPIAR PROPUESTAS EXPIRADAS (> 1 SEMANA)
+ahora = datetime.now()
+propuestas_vigentes = []
+for p in shared_data["solicitud_pedido"]:
+    ts = p.get("timestamp", ahora)
+    if ahora - ts < timedelta(days=7):
+        propuestas_vigentes.append(p)
+shared_data["solicitud_pedido"] = propuestas_vigentes
 
 # CABECERA RESPONSIVE
 st.markdown('<div class="dashboard-header">', unsafe_allow_html=True)
@@ -960,8 +961,24 @@ elif st.session_state["pagina"] == "detalle_paciente":
             if 'Pedido' in df_mostrar.columns: df_mostrar['Pedido'] = df_mostrar['Pedido'].astype(bool)
             if 'Incidencia' in df_mostrar.columns: df_mostrar['Incidencia'] = df_mostrar['Incidencia'].astype(bool)
 
+            # Función para verificar si un medicamento está bloqueado en propuesta activa (< 1 semana)
+            def esta_bloqueado(ref_pac, cn_val, med_val):
+                for p in shared_data["solicitud_pedido"]:
+                    if str(p.get("ref", "")) == str(ref_pac):
+                        if (str(p.get("cn", "")) == str(cn_val)) or (str(p.get("medicamento", "")) == str(med_val)):
+                            ts = p.get("timestamp", datetime.now())
+                            if datetime.now() - ts < timedelta(days=7):
+                                return True
+                return False
+
             def color_filas_paciente(row):
-                if row.get('Incidencia', False) == True:
+                ref_p = info["ref"]
+                cn_p = row.get("CN", "")
+                med_p = row.get("Medicamento", "")
+                
+                if esta_bloqueado(ref_p, cn_p, med_p):
+                    return ['background-color: #fed7aa; color: #9a3412; font-weight: bold;'] * len(row)
+                elif row.get('Incidencia', False) == True:
                     return ['background-color: #fecaca; color: #7f1d1d; font-weight: bold;'] * len(row) 
                 elif row.get('Pedido', False) == True:
                     return ['background-color: #bbf7d0; color: #14532d; font-weight: bold;'] * len(row) 
@@ -971,9 +988,16 @@ elif st.session_state["pagina"] == "detalle_paciente":
             
             col_config_dict = {}
             for col in df_mostrar.columns:
-                if col not in ['Pedido', 'Incidencia']: col_config_dict[col] = st.column_config.TextColumn(disabled=True)
-                elif col == 'Pedido': col_config_dict[col] = st.column_config.CheckboxColumn("📦 Pedido", default=False)
-                elif col == 'Incidencia': col_config_dict[col] = st.column_config.CheckboxColumn("⚠️ Incidencia", default=False)
+                if col not in ['Pedido', 'Incidencia']: 
+                    col_config_dict[col] = st.column_config.TextColumn(disabled=True)
+                elif col == 'Pedido': 
+                    # REQUISITO: La enfermera NO puede señalar ningún medicamento en la ficha (ni pedido ni incidencia)
+                    # Además, si está bloqueado por propuesta activa, se deshabilita para todos.
+                    es_disabled = (rol_actual != "admin")
+                    col_config_dict[col] = st.column_config.CheckboxColumn("📦 Pedido", default=False, disabled=es_disabled)
+                elif col == 'Incidencia': 
+                    es_disabled = (rol_actual != "admin")
+                    col_config_dict[col] = st.column_config.CheckboxColumn("⚠️ Incidencia", default=False, disabled=es_disabled)
 
             df_edited_result = st.data_editor(
                 styled_df, 
@@ -983,8 +1007,16 @@ elif st.session_state["pagina"] == "detalle_paciente":
                 column_config=col_config_dict
             )
             
-            if not df_edited_result.equals(df_mostrar):
+            if rol_actual == "admin" and not df_edited_result.equals(df_mostrar):
                 for idx in range(len(df_edited_result)):
+                    ref_p = info["ref"]
+                    cn_p = df_edited_result.loc[idx, 'CN'] if 'CN' in df_edited_result.columns else ""
+                    med_p = df_edited_result.loc[idx, 'Medicamento'] if 'Medicamento' in df_edited_result.columns else ""
+                    
+                    # Si está bloqueado, evitar que modifiquen el checkbox de pedido
+                    if esta_bloqueado(ref_p, cn_p, med_p):
+                        df_edited_result.loc[idx, 'Pedido'] = df_mostrar.loc[idx, 'Pedido']
+
                     p_val = df_edited_result.loc[idx, 'Pedido'] if 'Pedido' in df_edited_result.columns else False
                     i_val = df_edited_result.loc[idx, 'Incidencia'] if 'Incidencia' in df_edited_result.columns else False
                     
@@ -1010,13 +1042,23 @@ elif st.session_state["pagina"] == "detalle_paciente":
                     if st.button("📦 Enviar a Propuesta de Pedido", use_container_width=True):
                         df_pedidos = info["datos"][info["datos"]["Pedido"] == True]
                         if not df_pedidos.empty:
+                            enviados_count = 0
                             for _, row in df_pedidos.iterrows():
-                                shared_data["solicitud_pedido"].append({"ref": info["ref"], "paciente": info["nombre"], "medicamento": row.get("Medicamento", ""), "cn": row.get("CN", ""), "posologia": row.get("Posologia", ""), "datamatrix": "", "lote": "", "caducidad": ""})
+                                cn_val = row.get("CN", "")
+                                med_val = row.get("Medicamento", "")
+                                if not esta_bloqueado(info["ref"], cn_val, med_val):
+                                    shared_data["solicitud_pedido"].append({
+                                        "ref": info["ref"], "paciente": info["nombre"], "medicamento": med_val, 
+                                        "cn": cn_val, "posologia": row.get("Posologia", ""), 
+                                        "datamatrix": "", "lote": "", "caducidad": "",
+                                        "timestamp": datetime.now()
+                                    })
+                                    enviados_count += 1
                             info["datos"]["Pedido"] = False
                             shared_data["lista_pacientes"][pk]["datos"] = info["datos"]
-                            st.success("¡Enviado a Propuesta!"); time.sleep(1.5); st.rerun()
-                        else: st.warning("Seleccione algún medicamento.")
-                else: st.info("ℹ️ Solo el farmacéutico envía a propuesta desde aquí.")
+                            st.success(f"¡{enviados_count} medicamentos enviados a propuesta (bloqueados en naranja pastel)!"); time.sleep(1.5); st.rerun()
+                        else: st.warning("Seleccione algún medicamento no bloqueado.")
+                else: st.info("ℹ️ Solo el farmacéutico gestiona los pedidos desde aquí.")
 
             if rol_actual == "admin" and col_btn_inc:
                 with col_btn_inc:
@@ -1044,55 +1086,70 @@ elif st.session_state["pagina"] == "seleccion_productos_enfermera":
         st.info("No hay propuestas pendientes.")
         if "propuesta_seleccion" in st.session_state: 
             del st.session_state["propuesta_seleccion"]
+        if "propuesta_cantidades" in st.session_state:
+            del st.session_state["propuesta_cantidades"]
     else:
-        st.markdown("<p style='text-align: center; color: #64748b; font-size: 14px;'>Toca el botón debajo de cada medicamento para seleccionarlo.</p>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: #64748b; font-size: 14px;'>Selecciona los medicamentos y ajusta la cantidad de elementos si necesitas más de una caja (mínimo 1).</p>", unsafe_allow_html=True)
         
         if "propuesta_seleccion" not in st.session_state or len(st.session_state["propuesta_seleccion"]) != len(shared_data["solicitud_pedido"]):
             st.session_state["propuesta_seleccion"] = {i: False for i in range(len(shared_data["solicitud_pedido"]))}
+        if "propuesta_cantidades" not in st.session_state or len(st.session_state["propuesta_cantidades"]) != len(shared_data["solicitud_pedido"]):
+            st.session_state["propuesta_cantidades"] = {i: 1 for i in range(len(shared_data["solicitud_pedido"]))}
         
         for i, item in enumerate(shared_data["solicitud_pedido"]):
             is_selected = st.session_state["propuesta_seleccion"].get(i, False)
             
-            bg_color = "#bbf7d0" if is_selected else "#ffffff"
-            border_color = "#22c55e" if is_selected else "#cbd5e1"
-            text_color = "#14532d" if is_selected else "#1e293b"
+            bg_color = "#fed7aa" if is_selected else "#ffffff"
+            border_color = "#ea580c" if is_selected else "#cbd5e1"
+            text_color = "#9a3412" if is_selected else "#1e293b"
             icon = "✅" if is_selected else "📦"
             
-            st.markdown(f'''
-            <div style="background-color: {bg_color}; border: 2px solid {border_color}; border-radius: 10px; padding: 12px; margin-bottom: 5px; color: {text_color}; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                <div style="font-weight: 800; font-size: 15px;">{icon} {item.get('paciente', '')} <span style="font-size:12px; font-weight:normal; opacity:0.8;">(Ref: {item.get('ref', '')})</span></div>
-                <div style="font-size: 14px; margin-top: 4px;">💊 <b>{item.get('medicamento', '')}</b> <span style="font-size:12px; opacity:0.8;">(CN: {item.get('cn', '')})</span></div>
-                <div style="font-size: 13px; margin-top: 4px;">📝 Posología: {item.get('posologia', '')}</div>
-            </div>
-            ''', unsafe_allow_html=True)
-            
-            btn_label = "✅ SELECCIONADO (Tocar para desmarcar)" if is_selected else "👆 TOCAR PARA SELECCIONAR"
-            
-            if st.button(btn_label, key=f"btn_prop_{i}", use_container_width=True):
-                st.session_state["propuesta_seleccion"][i] = not is_selected
-                st.rerun()
+            with st.container(border=True):
+                st.markdown(f'''
+                <div style="background-color: {bg_color}; border-radius: 8px; padding: 10px; color: {text_color};">
+                    <div style="font-weight: 800; font-size: 15px;">{icon} {item.get('paciente', '')} <span style="font-size:12px; font-weight:normal; opacity:0.8;">(Ref: {item.get('ref', '')})</span></div>
+                    <div style="font-size: 14px; margin-top: 4px;">💊 <b>{item.get('medicamento', '')}</b> <span style="font-size:12px; opacity:0.8;">(CN: {item.get('cn', '')})</span></div>
+                    <div style="font-size: 13px; margin-top: 4px;">📝 Posología: {item.get('posologia', '')}</div>
+                </div>
+                ''', unsafe_allow_html=True)
                 
-            st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
+                c_sel, c_cant = st.columns([1.2, 0.8])
+                with c_sel:
+                    btn_label = "✅ SELECCIONADO" if is_selected else "👆 SELECCIONAR"
+                    if st.button(btn_label, key=f"btn_prop_{i}", use_container_width=True):
+                        st.session_state["propuesta_seleccion"][i] = not is_selected
+                        st.rerun()
+                with c_cant:
+                    cant_actual = st.session_state["propuesta_cantidades"].get(i, 1)
+                    nueva_cant = st.number_input("Cajas / Elementos", min_value=1, max_value=20, value=cant_actual, step=1, key=f"cant_prop_{i}")
+                    if nueva_cant != cant_actual:
+                        st.session_state["propuesta_cantidades"][i] = nueva_cant
+                
+            st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
         
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("🚀 Solicitar Pedido Definitivo", use_container_width=True):
-            seleccionados = []
-            restantes = []
-            for i, item in enumerate(shared_data["solicitud_pedido"]):
-                if st.session_state["propuesta_seleccion"].get(i, False):
-                    seleccionados.append(item)
-                else:
-                    restantes.append(item)
+            seleccionados_indices = [i for i, sel in st.session_state["propuesta_seleccion"].items() if sel]
             
-            if seleccionados:
-                for s in seleccionados:
-                    shared_data["pedidos_definitivos"].append({
-                        "ref": s.get("ref", ""), "paciente": s.get("paciente", ""), "medicamento": s.get("medicamento", ""),
-                        "cn": s.get("cn", ""), "posologia": s.get("posologia", ""), "datamatrix": "", "lote": "", "caducidad": ""
-                    })
-                shared_data["solicitud_pedido"] = restantes
+            if seleccionados_indices:
+                indices_a_remover = set()
+                for i in seleccionados_indices:
+                    item = shared_data["solicitud_pedido"][i]
+                    cantidad = st.session_state["propuesta_cantidades"].get(i, 1)
+                    
+                    # REQUISITO: Si se piden 2 o más unidades, se genera una fila separada para cada elemento en pedidos definitivos
+                    for _ in range(cantidad):
+                        shared_data["pedidos_definitivos"].append({
+                            "ref": item.get("ref", ""), "paciente": item.get("paciente", ""), "medicamento": item.get("medicamento", ""),
+                            "cn": item.get("cn", ""), "posologia": item.get("posologia", ""), "datamatrix": "", "lote": "", "caducidad": ""
+                        })
+                    indices_a_remover.add(i)
+                
+                # Filtrar los restantes en la propuesta
+                shared_data["solicitud_pedido"] = [item for idx, item in enumerate(shared_data["solicitud_pedido"]) if idx not in indices_a_remover]
                 del st.session_state["propuesta_seleccion"]
-                st.success(f"¡{len(seleccionados)} medicamentos solicitados!")
+                del st.session_state["propuesta_cantidades"]
+                st.success(f"¡Pedido definitivo generado correctamente!")
                 time.sleep(1.5); st.rerun()
             else: 
                 st.warning("⚠️ Selecciona al menos un medicamento.")
@@ -1103,10 +1160,24 @@ elif st.session_state["pagina"] == "seleccion_productos_enfermera":
 elif st.session_state["pagina"] == "solicitud_pedido_admin":
     if rol_actual != "admin": st.stop()
     st.markdown("<h2 style='text-align: center; color: #1e293b; font-weight: 800;'>📦 PROPUESTA (FARMACÉUTICO)</h2>", unsafe_allow_html=True)
+    
     if shared_data["solicitud_pedido"]: 
-        st.dataframe(pd.DataFrame(shared_data["solicitud_pedido"]), use_container_width=True, hide_index=True)
-        st.info("ℹ️ Propuestas enviadas. Enfermería las revisará para generar el pedido definitivo.")
-    else: st.info("No hay propuestas pendientes.")
+        st.info("ℹ️ Medicamentos en propuesta actual (Bloqueados en la ficha del paciente). El farmacéutico puede desbloquearlos/retirarlos individualmente si es necesario antes de que caduque el plazo semanal.")
+        
+        for idx, prop in enumerate(shared_data["solicitud_pedido"]):
+            with st.container(border=True):
+                ts_str = prop.get("timestamp", datetime.now()).strftime("%d/%m/%Y %H:%M")
+                st.markdown(f"**Paciente:** {prop.get('paciente')} (Ref: {prop.get('ref')}) | **Fecha Propuesta:** {ts_str}")
+                st.markdown(f"💊 **{prop.get('medicamento')}** (CN: {prop.get('cn')}) | Posología: {prop.get('posologia')}")
+                
+                if st.button(f"🔓 Desbloquear y Retirar de Propuesta #{idx}", key=f"unblock_prop_{idx}", use_container_width=True):
+                    shared_data["solicitud_pedido"].pop(idx)
+                    st.success("¡Medicamento desbloqueado y retirado de la propuesta con éxito!")
+                    time.sleep(1.0)
+                    st.rerun()
+    else: 
+        st.info("No hay propuestas pendientes.")
+        
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("⬅ Volver"): st.session_state["pagina"] = "inicio"; st.rerun()
 
