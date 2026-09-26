@@ -543,9 +543,9 @@ elif st.session_state["pagina"] == "alta_paciente":
 
         st.markdown("##### 📝 Nueva Propuesta de Alta")
         with st.container(border=True):
-            st.session_state["alta_input_ref"] = st.text_input("Código del Paciente (Ref) - [Lo asignará Farmacia]:", value=st.session_state["alta_input_ref"])
-            st.session_state["alta_input_nombre"] = st.text_input("Nombre Completo (Obligatorio):", value=st.session_state["alta_input_nombre"])
-            st.session_state["alta_input_cip"] = st.text_input("Código CIP (Obligatorio):", value=st.session_state["alta_input_cip"])
+            st.text_input("Código del Paciente (Ref) - [Lo asignará Farmacia]:", key="alta_input_ref")
+            st.text_input("Nombre Completo (Obligatorio):", key="alta_input_nombre")
+            st.text_input("Código CIP (Obligatorio):", key="alta_input_cip")
             
             meds_editadas = st.data_editor(st.session_state["df_alta_cargado"], num_rows="dynamic", key="editor_alta_paciente", use_container_width=True)
             
@@ -576,7 +576,18 @@ elif st.session_state["pagina"] == "alta_paciente":
                 else: 
                     st.warning("⚠️ El Nombre Completo y el Código CIP son campos obligatorios.")
 
-        st.markdown("---"); st.markdown("##### 📋 Mis Propuestas de Alta:")
+        st.markdown("---")
+        
+        # Panel de mis propuestas y botón para limpiar validadas
+        c_tit, c_btn = st.columns([0.6, 0.4], gap="large")
+        with c_tit:
+            st.markdown("##### 📋 Mis Propuestas de Alta:")
+        with c_btn:
+            if any(a["estado"] == "Validada" for a in shared_data["solicitudes_alta"]):
+                if st.button("🧹 Quitar Validadas", use_container_width=True):
+                    shared_data["solicitudes_alta"] = [a for a in shared_data["solicitudes_alta"] if a["estado"] != "Validada"]
+                    st.rerun()
+
         for alta in shared_data["solicitudes_alta"]:
             color_estado = "#fef08a" if alta["estado"] == "Pendiente" else ("#bbf7d0" if alta["estado"] == "Validada" else "#fecaca")
             with st.container(border=True):
@@ -594,28 +605,28 @@ elif st.session_state["pagina"] == "alta_paciente":
                         st.rerun()
     else:
         # FARMACIA (ADMIN)
-        st.markdown("##### ⚡ Alta Directa de Paciente")
         if "df_alta_admin_directo" not in st.session_state: st.session_state["df_alta_admin_directo"] = pd.DataFrame(columns=['Medicamento', 'CN', 'Posologia', 'Ultima Entrega'])
         if "admin_alta_ref" not in st.session_state: st.session_state["admin_alta_ref"] = ""
         if "admin_alta_nombre" not in st.session_state: st.session_state["admin_alta_nombre"] = ""
         if "admin_alta_cip" not in st.session_state: st.session_state["admin_alta_cip"] = ""
 
+        st.markdown("##### ⚡ Alta Directa de Paciente")
         with st.container(border=True):
-            st.session_state["admin_alta_ref"] = st.text_input("Código del Paciente (Ref):", value=st.session_state["admin_alta_ref"])
-            st.session_state["admin_alta_nombre"] = st.text_input("Nombre Completo:", value=st.session_state["admin_alta_nombre"])
-            st.session_state["admin_alta_cip"] = st.text_input("Código CIP:", value=st.session_state["admin_alta_cip"])
+            st.text_input("Código del Paciente (Ref):", key="admin_alta_ref")
+            st.text_input("Nombre Completo:", key="admin_alta_nombre")
+            st.text_input("Código CIP:", key="admin_alta_cip")
             meds_dir_edit = st.data_editor(st.session_state["df_alta_admin_directo"], num_rows="dynamic", key="editor_alta_admin_dir", use_container_width=True)
             
             if st.button("✅ Dar de Alta Directamente", use_container_width=True):
-                if st.session_state["admin_alta_nombre"].strip() and st.session_state["admin_alta_ref"].strip() and st.session_state["admin_alta_cip"].strip():
+                r_str = st.session_state["admin_alta_ref"].strip()
+                n_str = st.session_state["admin_alta_nombre"].strip()
+                c_str = st.session_state["admin_alta_cip"].strip()
+
+                if n_str and r_str and c_str:
                     df_final_dir = meds_dir_edit.copy()
                     df_final_dir['Ultima Entrega'] = ""
                     if 'Pedido' not in df_final_dir.columns: df_final_dir['Pedido'] = False
                     if 'Incidencia' not in df_final_dir.columns: df_final_dir['Incidencia'] = False
-                    
-                    r_str = st.session_state["admin_alta_ref"].strip()
-                    n_str = st.session_state["admin_alta_nombre"].strip()
-                    c_str = st.session_state["admin_alta_cip"].strip()
                     
                     shared_data["lista_pacientes"][f"{r_str} — {n_str}"] = {
                         "ref": r_str, "nombre": n_str, "cip": c_str, "hoja": r_str, "datos": df_final_dir
