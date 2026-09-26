@@ -478,7 +478,6 @@ elif st.session_state["pagina"] == "baja_paciente":
         with col_dir2:
             if st.button("📦 Dar de Baja Directa (CON Devolución)", use_container_width=True) and paciente_directo:
                 info_p = shared_data["lista_pacientes"][paciente_directo]
-                # Creamos una baja automática simulada para procesar la devolución
                 baja_rapida = {"id": str(uuid.uuid4())[:8], "etiqueta": paciente_directo, "nombre": info_p["nombre"], "ref": info_p["ref"], "estado": "Pendiente"}
                 st.session_state["baja_proceso_devolucion"] = baja_rapida
                 st.rerun()
@@ -529,56 +528,110 @@ elif st.session_state["pagina"] == "baja_paciente":
     if st.button("⬅ Volver al Menú", use_container_width=True): st.session_state["pagina"] = "inicio"; st.rerun()
 
 # ----------------------------------------------------
-# GESTIÓN DE ALTAS
+# GESTIÓN DE ALTAS (RENOVADO)
 # ----------------------------------------------------
 elif st.session_state["pagina"] == "alta_paciente":
     if "altas" not in permisos_usuario: st.stop()
     st.markdown("<h2 style='text-align: center; color: #1e293b; font-weight: 800;'>👴 GESTIÓN DE ALTAS</h2>", unsafe_allow_html=True)
 
     if rol_actual != "admin":
+        # ENFERMERÍA
         if "df_alta_cargado" not in st.session_state: st.session_state["df_alta_cargado"] = pd.DataFrame(columns=['Medicamento', 'CN', 'Posologia', 'Ultima Entrega'])
-        with st.form("form_propuesta_alta"):
-            nueva_ref = st.text_input("Código del Paciente (Ref):")
-            nuevo_nombre = st.text_input("Nombre Completo:")
-            nuevo_cip = st.text_input("Código CIP:")
+        if "alta_input_ref" not in st.session_state: st.session_state["alta_input_ref"] = ""
+        if "alta_input_nombre" not in st.session_state: st.session_state["alta_input_nombre"] = ""
+        if "alta_input_cip" not in st.session_state: st.session_state["alta_input_cip"] = ""
+
+        st.markdown("##### 📝 Nueva Propuesta de Alta")
+        with st.container(border=True):
+            st.session_state["alta_input_ref"] = st.text_input("Código del Paciente (Ref) - [Lo asignará Farmacia]:", value=st.session_state["alta_input_ref"])
+            st.session_state["alta_input_nombre"] = st.text_input("Nombre Completo (Obligatorio):", value=st.session_state["alta_input_nombre"])
+            st.session_state["alta_input_cip"] = st.text_input("Código CIP (Obligatorio):", value=st.session_state["alta_input_cip"])
+            
             meds_editadas = st.data_editor(st.session_state["df_alta_cargado"], num_rows="dynamic", key="editor_alta_paciente", use_container_width=True)
-            if st.form_submit_button("📤 Enviar Propuesta de Alta", use_container_width=True):
-                if nuevo_nombre.strip() and nueva_ref.strip() and nuevo_cip.strip():
-                    df_final = meds_editadas.copy(); df_final['Ultima Entrega'] = ""
-                    shared_data["solicitudes_alta"].append({"id": str(uuid.uuid4())[:8], "nombre": nuevo_nombre.strip(), "cip": nuevo_cip.strip(), "ref": nueva_ref.strip(), "datos": df_final, "estado": "Pendiente", "observacion": "", "fecha": datetime.now().strftime("%d/%m/%Y %H:%M")})
-                    st.success("¡Enviada!"); st.session_state["df_alta_cargado"] = pd.DataFrame(columns=['Medicamento', 'CN', 'Posologia', 'Ultima Entrega']); time.sleep(1.5); st.rerun()
-                else: st.warning("⚠️ Campos obligatorios.")
+            
+            if st.button("📤 Enviar Propuesta de Alta", use_container_width=True):
+                if st.session_state["alta_input_nombre"].strip() and st.session_state["alta_input_cip"].strip():
+                    df_final = meds_editadas.copy()
+                    df_final['Ultima Entrega'] = ""
+                    shared_data["solicitudes_alta"].append({
+                        "id": str(uuid.uuid4())[:8], 
+                        "nombre": st.session_state["alta_input_nombre"].strip(), 
+                        "cip": st.session_state["alta_input_cip"].strip(), 
+                        "ref": st.session_state["alta_input_ref"].strip(), 
+                        "datos": df_final, 
+                        "estado": "Pendiente", 
+                        "observacion": "", 
+                        "fecha": datetime.now().strftime("%d/%m/%Y %H:%M")
+                    })
+                    st.success("¡Propuesta enviada correctamente!")
+                    
+                    # Limpiar ficha completamente para solicitar otra alta
+                    st.session_state["alta_input_nombre"] = ""
+                    st.session_state["alta_input_cip"] = ""
+                    st.session_state["alta_input_ref"] = ""
+                    st.session_state["df_alta_cargado"] = pd.DataFrame(columns=['Medicamento', 'CN', 'Posologia', 'Ultima Entrega'])
+                    if "editor_alta_paciente" in st.session_state: del st.session_state["editor_alta_paciente"]
+                    time.sleep(1.0)
+                    st.rerun()
+                else: 
+                    st.warning("⚠️ El Nombre Completo y el Código CIP son campos obligatorios.")
+
         st.markdown("---"); st.markdown("##### 📋 Mis Propuestas de Alta:")
         for alta in shared_data["solicitudes_alta"]:
             color_estado = "#fef08a" if alta["estado"] == "Pendiente" else ("#bbf7d0" if alta["estado"] == "Validada" else "#fecaca")
             with st.container(border=True):
-                st.markdown(f"**{alta['nombre']}** (Cód: {alta['ref']}) — <span style='background-color: {color_estado}; padding: 2px 6px; border-radius: 4px;'><b>{alta['estado']}</b></span>", unsafe_allow_html=True)
+                st.markdown(f"**{alta['nombre']}** (Cód: {alta['ref'] if alta['ref'] else 'Pendiente'}) — <span style='background-color: {color_estado}; padding: 2px 6px; border-radius: 4px;'><b>{alta['estado']}</b></span>", unsafe_allow_html=True)
                 if alta["estado"] == "Rechazada":
-                    st.error(f"❌ Motivo: {alta['observacion']}")
-                    if st.button(f"🔄 Corregir", key=f"re_enviar_{alta['id']}"): st.session_state["df_alta_cargado"] = alta["datos"]; shared_data["solicitudes_alta"].remove(alta); st.rerun()
+                    st.error(f"❌ Motivo de rechazo: {alta['observacion']}")
+                    if st.button(f"🔄 Corregir (Volcar a la ficha)", key=f"re_enviar_{alta['id']}", use_container_width=True): 
+                        # Volcar datos a la ficha para hacer la corrección
+                        st.session_state["alta_input_nombre"] = alta["nombre"]
+                        st.session_state["alta_input_cip"] = alta["cip"]
+                        st.session_state["alta_input_ref"] = alta["ref"]
+                        st.session_state["df_alta_cargado"] = alta["datos"]
+                        if "editor_alta_paciente" in st.session_state: del st.session_state["editor_alta_paciente"]
+                        shared_data["solicitudes_alta"].remove(alta)
+                        st.rerun()
     else:
+        # FARMACIA (ADMIN)
         st.markdown("##### ⚡ Alta Directa de Paciente")
         if "df_alta_admin_directo" not in st.session_state: st.session_state["df_alta_admin_directo"] = pd.DataFrame(columns=['Medicamento', 'CN', 'Posologia', 'Ultima Entrega'])
-        
-        with st.form("form_alta_directa_admin"):
-            ref_dir = st.text_input("Código del Paciente (Ref):")
-            nombre_dir = st.text_input("Nombre Completo:")
-            cip_dir = st.text_input("Código CIP:")
+        if "admin_alta_ref" not in st.session_state: st.session_state["admin_alta_ref"] = ""
+        if "admin_alta_nombre" not in st.session_state: st.session_state["admin_alta_nombre"] = ""
+        if "admin_alta_cip" not in st.session_state: st.session_state["admin_alta_cip"] = ""
+
+        with st.container(border=True):
+            st.session_state["admin_alta_ref"] = st.text_input("Código del Paciente (Ref):", value=st.session_state["admin_alta_ref"])
+            st.session_state["admin_alta_nombre"] = st.text_input("Nombre Completo:", value=st.session_state["admin_alta_nombre"])
+            st.session_state["admin_alta_cip"] = st.text_input("Código CIP:", value=st.session_state["admin_alta_cip"])
             meds_dir_edit = st.data_editor(st.session_state["df_alta_admin_directo"], num_rows="dynamic", key="editor_alta_admin_dir", use_container_width=True)
-            if st.form_submit_button("✅ Dar de Alta Directamente", use_container_width=True):
-                if nombre_dir.strip() and ref_dir.strip() and cip_dir.strip():
+            
+            if st.button("✅ Dar de Alta Directamente", use_container_width=True):
+                if st.session_state["admin_alta_nombre"].strip() and st.session_state["admin_alta_ref"].strip() and st.session_state["admin_alta_cip"].strip():
                     df_final_dir = meds_dir_edit.copy()
                     df_final_dir['Ultima Entrega'] = ""
                     if 'Pedido' not in df_final_dir.columns: df_final_dir['Pedido'] = False
                     if 'Incidencia' not in df_final_dir.columns: df_final_dir['Incidencia'] = False
                     
-                    shared_data["lista_pacientes"][f"{ref_dir.strip()} — {nombre_dir.strip()}"] = {
-                        "ref": ref_dir.strip(), "nombre": nombre_dir.strip(), "cip": cip_dir.strip(), "hoja": ref_dir.strip(), "datos": df_final_dir
+                    r_str = st.session_state["admin_alta_ref"].strip()
+                    n_str = st.session_state["admin_alta_nombre"].strip()
+                    c_str = st.session_state["admin_alta_cip"].strip()
+                    
+                    shared_data["lista_pacientes"][f"{r_str} — {n_str}"] = {
+                        "ref": r_str, "nombre": n_str, "cip": c_str, "hoja": r_str, "datos": df_final_dir
                     }
                     st.success("¡Paciente dado de alta correctamente!")
+                    
+                    # Limpiar ficha completamente para dar de alta a otro
+                    st.session_state["admin_alta_ref"] = ""
+                    st.session_state["admin_alta_nombre"] = ""
+                    st.session_state["admin_alta_cip"] = ""
                     st.session_state["df_alta_admin_directo"] = pd.DataFrame(columns=['Medicamento', 'CN', 'Posologia', 'Ultima Entrega'])
-                    time.sleep(1.5); st.rerun()
-                else: st.warning("⚠️ Rellene los campos obligatorios (Ref, Nombre y CIP).")
+                    if "editor_alta_admin_dir" in st.session_state: del st.session_state["editor_alta_admin_dir"]
+                    time.sleep(1.0)
+                    st.rerun()
+                else: 
+                    st.warning("⚠️ Rellene los campos obligatorios (Ref, Nombre y CIP).")
 
         st.markdown("---"); st.markdown("##### 📋 Propuestas de Alta Pendientes de Enfermería:")
         pendientes_alta = [a for a in shared_data["solicitudes_alta"] if a["estado"] == "Pendiente"]
@@ -586,18 +639,34 @@ elif st.session_state["pagina"] == "alta_paciente":
         else:
             for alta in pendientes_alta:
                 with st.container(border=True):
-                    st.markdown(f"**Paciente:** {alta['nombre']} | **Cód:** {alta['ref']} | **CIP:** {alta['cip']}")
+                    st.markdown(f"**Paciente:** {alta['nombre']} | **CIP:** {alta['cip']}")
+                    
+                    # Farmacia asigna el código Ref aquí si la enfermera no lo puso
+                    ref_asignado = st.text_input("Asignar/Modificar Código (Ref):", value=alta.get('ref', ''), key=f"ref_val_{alta['id']}")
+                    
                     st.dataframe(alta["datos"], use_container_width=True, hide_index=True)
                     observacion_input = st.text_input("Observación si rechaza:", key=f"obs_{alta['id']}")
                     c_val, c_rec = st.columns(2)
                     with c_val:
                         if st.button(f"✅ Validar Propuesta", key=f"val_{alta['id']}", use_container_width=True):
-                            shared_data["lista_pacientes"][f"{alta['ref']} — {alta['nombre']}"] = {"ref": alta["ref"], "nombre": alta["nombre"], "cip": alta["cip"], "hoja": alta["ref"], "datos": alta["datos"]}
-                            alta["estado"] = "Validada"; st.success("¡Alta realizada!"); time.sleep(1.5); st.rerun()
+                            if not ref_asignado.strip():
+                                st.error("⚠️ Debe asignar obligatoriamente un Código (Ref) para validar el alta.")
+                            else:
+                                alta["ref"] = ref_asignado.strip()
+                                shared_data["lista_pacientes"][f"{alta['ref']} — {alta['nombre']}"] = {"ref": alta["ref"], "nombre": alta["nombre"], "cip": alta["cip"], "hoja": alta["ref"], "datos": alta["datos"]}
+                                alta["estado"] = "Validada"
+                                st.success("¡Alta realizada!")
+                                time.sleep(1.0)
+                                st.rerun()
                     with c_rec:
                         if st.button(f"❌ Rechazar", key=f"rec_{alta['id']}", use_container_width=True):
-                            if observacion_input.strip(): alta["estado"] = "Rechazada"; alta["observacion"] = observacion_input.strip(); st.warning("Rechazada."); time.sleep(1.5); st.rerun()
-                            else: st.error("Escriba el motivo.")
+                            if observacion_input.strip(): 
+                                alta["estado"] = "Rechazada"
+                                alta["observacion"] = observacion_input.strip()
+                                st.warning("Propuesta Rechazada.")
+                                time.sleep(1.0)
+                                st.rerun()
+                            else: st.error("Escriba obligatoriamente un motivo para el rechazo.")
 
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("⬅ Volver", use_container_width=True): st.session_state["pagina"] = "inicio"; st.rerun()
