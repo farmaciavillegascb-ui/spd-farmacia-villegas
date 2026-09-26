@@ -27,7 +27,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Estilos CSS avanzados (AUMENTADO TAMAÑO DE BOTONES E ICONOS)
+# Estilos CSS avanzados
 st.markdown("""
 <style>
     .block-container { padding-top: 0.5rem !important; padding-bottom: 2rem !important; padding-left: 1rem !important; padding-right: 1rem !important; }
@@ -43,7 +43,7 @@ st.markdown("""
     .logo-title { font-size: 20px; font-weight: 800; color: #1e293b; letter-spacing: 0.5px; }
     .status-bar { display: flex; justify-content: space-between; align-items: center; background: #f8fafc !important; padding: 6px 12px; border-radius: 8px; font-size: 12px; color: #475569; font-weight: 600; margin-bottom: 10px; border: 1px solid #e2e8f0; }
     
-    /* FORZAR INPUTS (USUARIO/CLAVE/BUSCADOR) EN BLANCO */
+    /* FORZAR INPUTS EN BLANCO */
     div[data-baseweb="input"] > div { background-color: #ffffff !important; border: 1px solid #cbd5e1 !important; }
     input { background-color: #ffffff !important; color: #1e293b !important; -webkit-text-fill-color: #1e293b !important; font-weight: 500 !important; }
     
@@ -51,7 +51,7 @@ st.markdown("""
     div[data-baseweb="select"] > div { background-color: #ffffff !important; border: 1px solid #cbd5e1 !important; }
     div[data-baseweb="select"] * { color: #1e293b !important; }
     
-    /* FORZAR BOTONES EN BLANCO/CLARO Y AUMENTAR SU TAMAÑO/ICONOS */
+    /* FORZAR BOTONES EN BLANCO/CLARO */
     div.stButton > button { 
         width: 100% !important; 
         height: 52px !important; 
@@ -71,12 +71,6 @@ st.markdown("""
     
     [data-testid="column"] { display: flex !important; flex-direction: column !important; align-items: stretch !important; }
     [data-testid="column"] > div { display: flex !important; flex-direction: column !important; flex-grow: 1 !important; }
-    
-    @keyframes pulse-subtle { 
-        0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.6); } 
-        50% { transform: scale(1.03); box-shadow: 0 0 0 12px rgba(239, 68, 68, 0); } 
-        100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } 
-    }
 
     @media (max-width: 768px) {
         .block-container { padding-top: 0.3rem !important; padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
@@ -384,6 +378,7 @@ if "paciente_seleccionado_key" not in st.session_state: st.session_state["pacien
 if "modo_incidencia" not in st.session_state: st.session_state["modo_incidencia"] = False
 if "borrador_incidencias" not in st.session_state: st.session_state["borrador_incidencias"] = pd.DataFrame()
 if "baja_proceso_devolucion" not in st.session_state: st.session_state["baja_proceso_devolucion"] = None
+if "albaran_impreso" not in st.session_state: st.session_state["albaran_impreso"] = False
 
 def obtener_parametro_url(nombre):
     try: return st.query_params.get(nombre)
@@ -440,14 +435,22 @@ if st.session_state["usuario_autenticado"] is None:
 rol_actual = st.session_state["rol_usuario"]
 permisos_usuario = shared_data["roles_sistema"].get(rol_actual, [])
 
-# LIMPIAR PROPUESTAS EXPIRADAS (> 1 SEMANA)
-ahora = datetime.now()
-propuestas_vigentes = []
-for p in shared_data["solicitud_pedido"]:
-    ts = p.get("timestamp", ahora)
-    if ahora - ts < timedelta(days=7):
-        propuestas_vigentes.append(p)
-shared_data["solicitud_pedido"] = propuestas_vigentes
+# LIMPIEZA AUTOMÁTICA SEGÚN CICLO SEMANAL (Miércoles 00:00 a Martes 24:00)
+now = datetime.now()
+days_since_wed = (now.weekday() - 2) % 7
+last_wednesday = (now - timedelta(days=days_since_wed)).replace(hour=0, minute=0, second=0, microsecond=0)
+
+shared_data["solicitud_pedido"] = [p for p in shared_data["solicitud_pedido"] if p.get("timestamp", last_wednesday) >= last_wednesday]
+
+# ----------------------------------------------------
+# AVISO DE ÚLTIMO DÍA DE CICLO (MARTES) - FIJO EN LA PARTE SUPERIOR
+# ----------------------------------------------------
+if now.weekday() == 1:
+    st.markdown("""
+    <div style="background: linear-gradient(135deg, #ef4444, #dc2626); color: white; padding: 14px 20px; border-radius: 10px; text-align: center; font-weight: 800; font-size: 16px; margin-bottom: 12px; box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);">
+        🚨 ¡AVISO URGENTE! Quedan menos de 24 horas para finalizar el ciclo semanal (Miércoles 00:00). Se eliminarán las propuestas de pedido y los pedidos no tramitados.
+    </div>
+    """, unsafe_allow_html=True)
 
 # CABECERA RESPONSIVE
 st.markdown('<div class="dashboard-header">', unsafe_allow_html=True)
@@ -961,7 +964,6 @@ elif st.session_state["pagina"] == "detalle_paciente":
             if 'Pedido' in df_mostrar.columns: df_mostrar['Pedido'] = df_mostrar['Pedido'].astype(bool)
             if 'Incidencia' in df_mostrar.columns: df_mostrar['Incidencia'] = df_mostrar['Incidencia'].astype(bool)
 
-            # Función para verificar si un medicamento está bloqueado en propuesta activa (< 1 semana)
             def esta_bloqueado(ref_pac, cn_val, med_val):
                 for p in shared_data["solicitud_pedido"]:
                     if str(p.get("ref", "")) == str(ref_pac):
@@ -991,8 +993,6 @@ elif st.session_state["pagina"] == "detalle_paciente":
                 if col not in ['Pedido', 'Incidencia']: 
                     col_config_dict[col] = st.column_config.TextColumn(disabled=True)
                 elif col == 'Pedido': 
-                    # REQUISITO: La enfermera NO puede señalar ningún medicamento en la ficha (ni pedido ni incidencia)
-                    # Además, si está bloqueado por propuesta activa, se deshabilita para todos.
                     es_disabled = (rol_actual != "admin")
                     col_config_dict[col] = st.column_config.CheckboxColumn("📦 Pedido", default=False, disabled=es_disabled)
                 elif col == 'Incidencia': 
@@ -1013,7 +1013,6 @@ elif st.session_state["pagina"] == "detalle_paciente":
                     cn_p = df_edited_result.loc[idx, 'CN'] if 'CN' in df_edited_result.columns else ""
                     med_p = df_edited_result.loc[idx, 'Medicamento'] if 'Medicamento' in df_edited_result.columns else ""
                     
-                    # Si está bloqueado, evitar que modifiquen el checkbox de pedido
                     if esta_bloqueado(ref_p, cn_p, med_p):
                         df_edited_result.loc[idx, 'Pedido'] = df_mostrar.loc[idx, 'Pedido']
 
@@ -1137,7 +1136,6 @@ elif st.session_state["pagina"] == "seleccion_productos_enfermera":
                     item = shared_data["solicitud_pedido"][i]
                     cantidad = st.session_state["propuesta_cantidades"].get(i, 1)
                     
-                    # REQUISITO: Si se piden 2 o más unidades, se genera una fila separada para cada elemento en pedidos definitivos
                     for _ in range(cantidad):
                         shared_data["pedidos_definitivos"].append({
                             "ref": item.get("ref", ""), "paciente": item.get("paciente", ""), "medicamento": item.get("medicamento", ""),
@@ -1145,7 +1143,6 @@ elif st.session_state["pagina"] == "seleccion_productos_enfermera":
                         })
                     indices_a_remover.add(i)
                 
-                # Filtrar los restantes en la propuesta
                 shared_data["solicitud_pedido"] = [item for idx, item in enumerate(shared_data["solicitud_pedido"]) if idx not in indices_a_remover]
                 del st.session_state["propuesta_seleccion"]
                 del st.session_state["propuesta_cantidades"]
@@ -1162,7 +1159,7 @@ elif st.session_state["pagina"] == "solicitud_pedido_admin":
     st.markdown("<h2 style='text-align: center; color: #1e293b; font-weight: 800;'>📦 PROPUESTA (FARMACÉUTICO)</h2>", unsafe_allow_html=True)
     
     if shared_data["solicitud_pedido"]: 
-        st.info("ℹ️ Medicamentos en propuesta actual (Bloqueados en la ficha del paciente). El farmacéutico puede desbloquearlos/retirarlos individualmente si es necesario antes de que caduque el plazo semanal.")
+        st.info("ℹ️ Medicamentos en propuesta actual (Bloqueados en la ficha del paciente). El farmacéutico puede desbloquearlos/retirarlos individualmente si es necesario.")
         
         for idx, prop in enumerate(shared_data["solicitud_pedido"]):
             with st.container(border=True):
@@ -1190,6 +1187,7 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
     
     if not shared_data["pedidos_definitivos"]: 
         st.info("No hay pedidos definitivos pendientes.")
+        st.session_state["albaran_impreso"] = False
     else:
         st.markdown("##### 📋 Listado de Pedidos (Clic en la columna 'DataMatrix' y escanee):")
         
@@ -1258,23 +1256,61 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
             rows_data = [[str(r.get('ref', '')), str(r.get('paciente', '')), str(r.get('medicamento', '')), str(r.get('cn', '')), str(r.get('posologia', '')), str(r.get('lote', '')), str(r.get('caducidad', ''))] for r in shared_data["pedidos_definitivos"]]
             
             dibujar_tabla_pdf(pdf, headers, rows_data, col_widths, align_list)
-            st.download_button("📄 Imprimir Albarán (PDF)", data=pdf.output(dest='S').encode('latin1'), file_name="Albaran_Entrega.pdf", mime="application/pdf", use_container_width=True)
+            
+            pdf_bytes = pdf.output(dest='S').encode('latin1')
+            
+            if st.download_button("📄 Imprimir Albarán (PDF)", data=pdf_bytes, file_name="Albaran_Entrega.pdf", mime="application/pdf", use_container_width=True):
+                st.session_state["albaran_impreso"] = True
         
         with col_act:
+            if "confirmar_borrado_sin_imprimir" not in st.session_state:
+                st.session_state["confirmar_borrado_sin_imprimir"] = False
+
             if st.button("📌 Actualizar y Limpiar", use_container_width=True):
-                fecha_hoy = datetime.now().strftime("%d/%m/%Y")
-                for item in shared_data["pedidos_definitivos"]:
-                    for pk, p_info in shared_data["lista_pacientes"].items():
-                        if str(p_info.get("ref", "")) == str(item.get("ref", "")):
-                            df_p = p_info["datos"]
-                            if 'Ultima Entrega' not in df_p.columns: df_p['Ultima Entrega'] = ""
-                            mask = (df_p['CN'].astype(str).str.zfill(6) == str(item.get("cn", "")).zfill(6)) | (df_p['Medicamento'].astype(str) == str(item.get("medicamento", "")))
-                            if mask.any(): df_p.loc[mask, 'Ultima Entrega'] = fecha_hoy
-                            shared_data["lista_pacientes"][pk]["datos"] = df_p
-                shared_data["pedidos_definitivos"] = []
-                st.success("¡Actualizado y limpio!")
-                time.sleep(1.5)
-                st.rerun()
+                if not st.session_state.get("albaran_impreso", False):
+                    st.session_state["confirmar_borrado_sin_imprimir"] = True
+                else:
+                    st.session_state["confirmar_borrado_sin_imprimir"] = False
+                    # Proceder con la actualización y limpieza
+                    fecha_hoy = datetime.now().strftime("%d/%m/%Y")
+                    for item in shared_data["pedidos_definitivos"]:
+                        for pk, p_info in shared_data["lista_pacientes"].items():
+                            if str(p_info.get("ref", "")) == str(item.get("ref", "")):
+                                df_p = p_info["datos"]
+                                if 'Ultima Entrega' not in df_p.columns: df_p['Ultima Entrega'] = ""
+                                mask = (df_p['CN'].astype(str).str.zfill(6) == str(item.get("cn", "")).zfill(6)) | (df_p['Medicamento'].astype(str) == str(item.get("medicamento", "")))
+                                if mask.any(): df_p.loc[mask, 'Ultima Entrega'] = fecha_hoy
+                                shared_data["lista_pacientes"][pk]["datos"] = df_p
+                    shared_data["pedidos_definitivos"] = []
+                    st.session_state["albaran_impreso"] = False
+                    st.success("¡Actualizado y limpio!")
+                    time.sleep(1.5)
+                    st.rerun()
+
+            if st.session_state.get("confirmar_borrado_sin_imprimir", False):
+                st.warning("⚠️ **AVISO:** El albarán **NO ha sido impreso**. ¿Está seguro de que desea eliminar el pedido y los DataMatrix escaneados sin imprimir el albarán?")
+                c_yes, c_no = st.columns(2)
+                with c_yes:
+                    if st.button("✔️ SÍ, ELIMINAR", use_container_width=True):
+                        fecha_hoy = datetime.now().strftime("%d/%m/%Y")
+                        for item in shared_data["pedidos_definitivos"]:
+                            for pk, p_info in shared_data["lista_pacientes"].items():
+                                if str(p_info.get("ref", "")) == str(item.get("ref", "")):
+                                    df_p = p_info["datos"]
+                                    if 'Ultima Entrega' not in df_p.columns: df_p['Ultima Entrega'] = ""
+                                    mask = (df_p['CN'].astype(str).str.zfill(6) == str(item.get("cn", "")).zfill(6)) | (df_p['Medicamento'].astype(str) == str(item.get("medicamento", "")))
+                                    if mask.any(): df_p.loc[mask, 'Ultima Entrega'] = fecha_hoy
+                                    shared_data["lista_pacientes"][pk]["datos"] = df_p
+                        shared_data["pedidos_definitivos"] = []
+                        st.session_state["albaran_impreso"] = False
+                        st.session_state["confirmar_borrado_sin_imprimir"] = False
+                        st.success("¡Pedido eliminado sin imprimir!")
+                        time.sleep(1.5)
+                        st.rerun()
+                with c_no:
+                    if st.button("❌ CANCELAR", use_container_width=True):
+                        st.session_state["confirmar_borrado_sin_imprimir"] = False
+                        st.rerun()
                 
     if st.button("⬅ Volver"): st.session_state["pagina"] = "inicio"; st.rerun()
 
