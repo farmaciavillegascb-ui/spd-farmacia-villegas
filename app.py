@@ -89,7 +89,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ----------------------------------------------------
-# CLASE PDF PERSONALIZADA (ALBARANES)
+# CLASES Y FUNCIONES PARA PDF
 # ----------------------------------------------------
 class PDFAlbaran(FPDF):
     def footer(self):
@@ -103,6 +103,142 @@ class PDFAlbaran(FPDF):
         self.cell(60, 5, "Firma Farmaceutico", align='C')
         self.set_x(197)
         self.cell(60, 5, "Firma Enfermera", align='C')
+
+class PDFReporteIncidencias(FPDF):
+    def header(self):
+        self.set_font('Arial', 'B', 15)
+        self.cell(0, 10, limpiar_texto_pdf('FARMACIA VILLEGAS C.B. - REPORTE DE INCIDENCIAS'), 0, 1, 'C')
+        self.set_font('Arial', 'I', 10)
+        self.cell(0, 6, limpiar_texto_pdf(f'Fecha de emision: {datetime.now().strftime("%d/%m/%Y %H:%M")}'), 0, 1, 'C')
+        self.ln(5)
+
+    def footer(self):
+        self.set_y(-15)
+        self.set_font('Arial', 'I', 8)
+        self.cell(0, 10, f'Pagina {self.page_no()}', 0, 0, 'C')
+
+def limpiar_texto_pdf(texto):
+    if not texto: return ""
+    return unicodedata.normalize('NFKD', str(texto).replace('ñ','n').replace('Ñ','N').replace('º','.').replace('ª','.')).encode('ascii', 'ignore').decode('ascii')
+
+def generar_pdf_incidencias(incidencias):
+    pdf = PDFReporteIncidencias(orientation='P', unit='mm', format='A4')
+    pdf.add_page()
+    
+    # Agrupar incidencias por paciente
+    agrupadas = {}
+    for inc in incidencias:
+        pac = f"{inc.get('paciente', 'Desconocido')} (Ref: {inc.get('ref_paciente', '')})"
+        if pac not in agrupadas:
+            agrupadas[pac] = []
+        agrupadas[pac].append(inc)
+        
+    for pac, lista in agrupadas.items():
+        # Banda destacada para el paciente
+        pdf.set_font("Arial", 'B', 12)
+        pdf.set_fill_color(230, 240, 255) # Azul muy clarito
+        pdf.cell(0, 8, limpiar_texto_pdf(f"  Paciente: {pac}"), 0, 1, 'L', fill=True)
+        pdf.ln(3)
+        
+        # Listado de incidencias del paciente
+        for inc in lista:
+            med = str(inc.get('medicamento', ''))
+            cn = str(inc.get('cn', ''))
+            mot = str(inc.get('motivo', ''))
+            obs = str(inc.get('observaciones', ''))
+            fecha = str(inc.get('fecha', ''))
+            resuelta = inc.get('resuelta_por_enfermera', False)
+            
+            estado = "[RESUELTA]" if resuelta else "[PENDIENTE]"
+            
+            # Nombre de medicamento y estado
+            pdf.set_font("Arial", 'B', 10)
+            pdf.cell(5, 5, "", 0, 0) # Margen
+            pdf.cell(0, 5, limpiar_texto_pdf(f"> {med} (CN: {cn}) {estado}"), 0, 1)
+            
+            # Motivo y fecha
+            pdf.set_font("Arial", '', 9)
+            pdf.cell(10, 5, "", 0, 0) # Margen extra interno
+            pdf.multi_cell(0, 5, limpiar_texto_pdf(f"Motivo: {mot} | Registrada: {fecha}"))
+            
+            # Observaciones si las hay
+            if obs:
+                pdf.cell(10, 5, "", 0, 0)
+                pdf.multi_cell(0, 5, limpiar_texto_pdf(f"Observaciones: {obs}"))
+            
+            pdf.ln(3)
+        pdf.ln(2)
+        
+    return pdf.output(dest='S').encode('latin1')
+
+def dibujar_tabla_pdf(pdf, headers, rows_data, col_widths, align_list=None):
+    header_height = 8
+    pdf.set_font("Arial", 'B', 8)
+    x_start, y_start = pdf.get_x(), pdf.get_y()
+    
+    for i, h_text in enumerate(headers):
+        w = col_widths[i]
+        cx, cy = pdf.get_x(), pdf.get_y()
+        pdf.rect(cx, cy, w, header_height)
+        pdf.set_xy(cx, cy + 1.5)
+        pdf.cell(w, 5, limpiar_texto_pdf(h_text), align='C', ln=0)
+        pdf.set_xy(cx + w, y_start)
+    pdf.set_xy(x_start, y_start + header_height)
+    
+    pdf.set_font("Arial", '', 7.5)
+    for row in rows_data:
+        cell_lines = []
+        max_num_lines = 1
+        for i, val in enumerate(row):
+            w = col_widths[i]
+            lines = pdf.multi_cell(w - 2, 3.5, str(val if val is not None else ""), split_only=True)
+            cell_lines.append(lines)
+            if len(lines) > max_num_lines: max_num_lines = len(lines)
+        
+        row_height = max(6, max_num_lines * 3.5 + 2)
+        xr_start, yr_start = pdf.get_x(), pdf.get_y()
+        
+        if yr_start + row_height > 180:
+            pdf.add_page(); pdf.set_font("Arial", 'B', 8)
+            hx, hy = pdf.get_x(), pdf.get_y()
+            for i, h_text in enumerate(headers):
+                w = col_widths[i]
+                cx, cy = pdf.get_x(), pdf.get_y()
+                pdf.rect(cx, cy, w, header_height)
+                pdf.set_xy(cx, cy + 1.5)
+                pdf.cell(w, 5, limpiar_texto_pdf(h_text), align='C', ln=0)
+                pdf.set_xy(cx + w, hy)
+            pdf.set_xy(hx, hy + header_height)
+            pdf.set_font("Arial", '', 7.5)
+            yr_start, xr_start = pdf.get_y(), pdf.get_x()
+
+        for i, lines in enumerate(cell_lines):
+            w = col_widths[i]
+            align = align_list[i] if align_list and i < len(align_list) else 'L'
+            cx, cy = pdf.get_x(), pdf.get_y()
+            pdf.rect(cx, cy, w, row_height)
+            current_y = cy + 1
+            for line in lines:
+                pdf.set_xy(cx + 1, current_y)
+                pdf.cell(w - 2, 3.5, limpiar_texto_pdf(line), align=align, ln=0)
+                current_y += 3.5
+            pdf.set_xy(cx + w, yr_start)
+        pdf.set_xy(xr_start, yr_start + row_height)
+
+def generar_albaran_devolucion_pdf(nombre_paciente, ref_paciente, lista_devolucion):
+    pdf = PDFAlbaran(orientation='L', unit='mm', format='A4') 
+    pdf.add_page()
+    pdf.set_font("Arial", 'B', 14)
+    pdf.cell(0, 10, limpiar_texto_pdf("FARMACIA VILLEGAS C.B. - ALBARAN DE DEVOLUCION"), ln=True, align='C')
+    pdf.set_font("Arial", '', 11)
+    pdf.cell(0, 6, limpiar_texto_pdf(f"Paciente: {nombre_paciente} (Ref: {ref_paciente})"), ln=True, align='L')
+    pdf.ln(5)
+    headers = ["Medicamento", "Descripcion", "CN", "Lote", "Caducidad", "Serie", "Restantes"]
+    col_widths = [62, 78, 22, 38, 28, 25, 22]
+    align_list = ['L', 'L', 'C', 'C', 'C', 'C', 'C']
+    rows_data = [[str(r.get('Medicamento','')), str(r.get('Descripción','')), str(r.get('CN','')), str(r.get('Lote','')), str(r.get('Caducidad','')), str(r.get('Serie','')), str(r.get('Pastillas restantes','0'))] for r in lista_devolucion]
+    dibujar_tabla_pdf(pdf, headers, rows_data, col_widths, align_list)
+    return pdf.output(dest='S').encode('latin1')
 
 # ----------------------------------------------------
 # CARGA DE BASE DE DATOS DE MEDICAMENTOS (EN CACHÉ)
@@ -201,79 +337,6 @@ def traducir_datamatrix(raw_code, bd_medicamentos):
         res['tamano'] = str(datos.get('tamano', ''))
     else: res['farmaco'] = f"Medicamento (CN: {res['cn']})"
     return res
-
-def limpiar_texto_pdf(texto):
-    if not texto: return ""
-    return unicodedata.normalize('NFKD', str(texto).replace('ñ','n').replace('Ñ','N').replace('º','.').replace('ª','.')).encode('ascii', 'ignore').decode('ascii')
-
-def dibujar_tabla_pdf(pdf, headers, rows_data, col_widths, align_list=None):
-    header_height = 8
-    pdf.set_font("Arial", 'B', 8)
-    x_start, y_start = pdf.get_x(), pdf.get_y()
-    
-    for i, h_text in enumerate(headers):
-        w = col_widths[i]
-        cx, cy = pdf.get_x(), pdf.get_y()
-        pdf.rect(cx, cy, w, header_height)
-        pdf.set_xy(cx, cy + 1.5)
-        pdf.cell(w, 5, limpiar_texto_pdf(h_text), align='C', ln=0)
-        pdf.set_xy(cx + w, y_start)
-    pdf.set_xy(x_start, y_start + header_height)
-    
-    pdf.set_font("Arial", '', 7.5)
-    for row in rows_data:
-        cell_lines = []
-        max_num_lines = 1
-        for i, val in enumerate(row):
-            w = col_widths[i]
-            lines = pdf.multi_cell(w - 2, 3.5, str(val if val is not None else ""), split_only=True)
-            cell_lines.append(lines)
-            if len(lines) > max_num_lines: max_num_lines = len(lines)
-        
-        row_height = max(6, max_num_lines * 3.5 + 2)
-        xr_start, yr_start = pdf.get_x(), pdf.get_y()
-        
-        if yr_start + row_height > 180:
-            pdf.add_page(); pdf.set_font("Arial", 'B', 8)
-            hx, hy = pdf.get_x(), pdf.get_y()
-            for i, h_text in enumerate(headers):
-                w = col_widths[i]
-                cx, cy = pdf.get_x(), pdf.get_y()
-                pdf.rect(cx, cy, w, header_height)
-                pdf.set_xy(cx, cy + 1.5)
-                pdf.cell(w, 5, limpiar_texto_pdf(h_text), align='C', ln=0)
-                pdf.set_xy(cx + w, hy)
-            pdf.set_xy(hx, hy + header_height)
-            pdf.set_font("Arial", '', 7.5)
-            yr_start, xr_start = pdf.get_y(), pdf.get_x()
-
-        for i, lines in enumerate(cell_lines):
-            w = col_widths[i]
-            align = align_list[i] if align_list and i < len(align_list) else 'L'
-            cx, cy = pdf.get_x(), pdf.get_y()
-            pdf.rect(cx, cy, w, row_height)
-            current_y = cy + 1
-            for line in lines:
-                pdf.set_xy(cx + 1, current_y)
-                pdf.cell(w - 2, 3.5, limpiar_texto_pdf(line), align=align, ln=0)
-                current_y += 3.5
-            pdf.set_xy(cx + w, yr_start)
-        pdf.set_xy(xr_start, yr_start + row_height)
-
-def generar_albaran_devolucion_pdf(nombre_paciente, ref_paciente, lista_devolucion):
-    pdf = PDFAlbaran(orientation='L', unit='mm', format='A4') 
-    pdf.add_page()
-    pdf.set_font("Arial", 'B', 14)
-    pdf.cell(0, 10, limpiar_texto_pdf("FARMACIA VILLEGAS C.B. - ALBARAN DE DEVOLUCION"), ln=True, align='C')
-    pdf.set_font("Arial", '', 11)
-    pdf.cell(0, 6, limpiar_texto_pdf(f"Paciente: {nombre_paciente} (Ref: {ref_paciente})"), ln=True, align='L')
-    pdf.ln(5)
-    headers = ["Medicamento", "Descripcion", "CN", "Lote", "Caducidad", "Serie", "Restantes"]
-    col_widths = [62, 78, 22, 38, 28, 25, 22]
-    align_list = ['L', 'L', 'C', 'C', 'C', 'C', 'C']
-    rows_data = [[str(r.get('Medicamento','')), str(r.get('Descripción','')), str(r.get('CN','')), str(r.get('Lote','')), str(r.get('Caducidad','')), str(r.get('Serie','')), str(r.get('Pastillas restantes','0'))] for r in lista_devolucion]
-    dibujar_tabla_pdf(pdf, headers, rows_data, col_widths, align_list)
-    return pdf.output(dest='S').encode('latin1')
 
 @st.cache_resource
 def get_shared_data():
@@ -1034,7 +1097,6 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
             pdf.ln(5)
             
             headers = ["Ref.", "Paciente", "Medicamento", "C.N.", "Posologia", "Lote", "Caducidad"]
-            # Hemos ensanchado Paciente y Medicamento quitando el DataMatrix (Total = 277)
             col_widths = [20, 60, 90, 25, 35, 25, 22] 
             align_list = ['C', 'L', 'L', 'C', 'C', 'C', 'C']
             
@@ -1063,7 +1125,7 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
     if st.button("⬅ Volver"): st.session_state["pagina"] = "inicio"; st.rerun()
 
 # ----------------------------------------------------
-# INCIDENCIAS - CORREGIDO VISUALIZACIÓN FECHA
+# INCIDENCIAS - IMPRESIÓN PDF AGRUPADA POR PACIENTE
 # ----------------------------------------------------
 elif st.session_state["pagina"] == "incidencias":
     if "incidencias" not in permisos_usuario: st.stop()
@@ -1072,8 +1134,17 @@ elif st.session_state["pagina"] == "incidencias":
     if not shared_data["incidencias_activas"]: 
         st.info("No hay incidencias activas.")
     else:
-        st.markdown("<p style='text-align: center; color: #64748b; font-size: 14px;'>Toca el botón debajo de cada incidencia para marcarla como solucionada.</p>", unsafe_allow_html=True)
-        
+        # Añadido: Botón para imprimir PDF estructurado
+        col_inst, col_print = st.columns([0.6, 0.4])
+        with col_inst:
+            st.markdown("<p style='text-align: left; color: #64748b; font-size: 14px;'>Toca el botón debajo de cada incidencia para marcarla como solucionada.</p>", unsafe_allow_html=True)
+        with col_print:
+            # Generamos el PDF al vuelo y lo ponemos en un botón de descarga
+            pdf_bytes = generar_pdf_incidencias(shared_data["incidencias_activas"])
+            st.download_button("🖨️ Imprimir PDF (Agrupado por Paciente)", data=pdf_bytes, file_name="Reporte_Incidencias.pdf", mime="application/pdf", use_container_width=True)
+
+        st.markdown("<hr style='margin-top: 0px; margin-bottom: 20px;'>", unsafe_allow_html=True)
+
         for i, item in enumerate(shared_data["incidencias_activas"]):
             is_resuelta = item.get("resuelta_por_enfermera", False)
             
