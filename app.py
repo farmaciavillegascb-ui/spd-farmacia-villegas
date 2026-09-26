@@ -1106,8 +1106,16 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
         st.markdown("##### 📋 Listado de Pedidos (Clic en la columna 'DataMatrix' de la fila correspondiente y escanee):")
         
         df_defs = pd.DataFrame(shared_data["pedidos_definitivos"])
-        for col in ['datamatrix', 'lote', 'caducidad']:
-            if col not in df_defs.columns: df_defs[col] = ""
+        
+        # --- SOLUCIÓN ERROR CACHÉ STREAMLIT ---
+        columnas_requeridas = ['ref', 'paciente', 'medicamento', 'cn', 'posologia', 'datamatrix', 'lote', 'caducidad']
+        for col in columnas_requeridas:
+            if col not in df_defs.columns: 
+                df_defs[col] = ""
+                
+        df_defs = df_defs.astype(str)
+        df_defs = df_defs.replace(["nan", "None", "<NA>"], "")
+        # ---------------------------------------
             
         df_defs_edited = st.data_editor(
             df_defs, 
