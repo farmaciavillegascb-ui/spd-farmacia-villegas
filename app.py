@@ -967,40 +967,85 @@ elif st.session_state["pagina"] == "solicitud_pedido_admin":
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("⬅ Volver"): st.session_state["pagina"] = "inicio"; st.rerun()
 
+# ----------------------------------------------------
+# PEDIDOS DEFINITIVOS (NUEVO SISTEMA DE ESCANEO DIRECTO Y PDF REDUCIDO)
+# ----------------------------------------------------
 elif st.session_state["pagina"] == "pedidos_definitivos_admin":
     if "pedidos_definitivos" not in permisos_usuario: st.stop()
     st.markdown("<h2 style='text-align: center; color: #1e293b; font-weight: 800;'>🛒 PEDIDOS DEFINITIVOS</h2>", unsafe_allow_html=True)
-    if not shared_data["pedidos_definitivos"]: st.info("No hay pedidos definitivos pendientes.")
+    
+    if not shared_data["pedidos_definitivos"]: 
+        st.info("No hay pedidos definitivos pendientes.")
     else:
-        st.markdown("##### 📥 Escanee DataMatrix:")
-        with st.form("form_pedidos_dm", clear_on_submit=True):
-            cadena_dm_pedido = st.text_input("Cadena DataMatrix:")
-            if st.form_submit_button("🔍 Procesar y Asignar", use_container_width=True) and cadena_dm_pedido:
-                parsed_ped = traducir_datamatrix(cadena_dm_pedido, BD_MEDICAMENTOS)
-                asignado = False
-                for item in shared_data["pedidos_definitivos"]:
-                    if not item.get("datamatrix") or item.get("datamatrix") == "":
-                        item["datamatrix"] = cadena_dm_pedido; item["lote"] = parsed_ped['lote']; item["caducidad"] = parsed_ped['caducidad']; asignado = True; break
-                if asignado: st.success(f"✅ Asignado (Lote: {parsed_ped['lote']}, Cad: {parsed_ped['caducidad']})")
-                else: st.warning("⚠️ Todos tienen DataMatrix.")
-
-        st.markdown("---"); st.markdown("##### 📋 Listado:")
+        st.markdown("##### 📋 Listado de Pedidos (Clic en la columna 'DataMatrix' de la fila correspondiente y escanee):")
+        
         df_defs = pd.DataFrame(shared_data["pedidos_definitivos"])
         for col in ['datamatrix', 'lote', 'caducidad']:
             if col not in df_defs.columns: df_defs[col] = ""
-        df_defs_edited = st.data_editor(df_defs, use_container_width=True, hide_index=True, num_rows="dynamic", key="editor_pedidos_definitivos", column_config={"datamatrix": st.column_config.TextColumn("DataMatrix"), "lote": st.column_config.TextColumn("Lote"), "caducidad": st.column_config.TextColumn("Caducidad")})
+            
+        df_defs_edited = st.data_editor(
+            df_defs, 
+            use_container_width=True, 
+            hide_index=True, 
+            num_rows="dynamic", 
+            key="editor_pedidos_definitivos", 
+            column_config={
+                "datamatrix": st.column_config.TextColumn("📷 Clic y Escanear (DataMatrix)"), 
+                "lote": st.column_config.TextColumn("Lote"), 
+                "caducidad": st.column_config.TextColumn("Caducidad"),
+                "ref": st.column_config.TextColumn("Ref.", disabled=True),
+                "paciente": st.column_config.TextColumn("Paciente", disabled=True),
+                "medicamento": st.column_config.TextColumn("Medicamento", disabled=True),
+                "cn": st.column_config.TextColumn("C.N.", disabled=True),
+                "posologia": st.column_config.TextColumn("Posología", disabled=True)
+            }
+        )
+        
+        cambios = False
+        for i in range(len(df_defs_edited)):
+            nuevo_dm = str(df_defs_edited.iloc[i].get("datamatrix", "")).strip()
+            viejo_dm = str(shared_data["pedidos_definitivos"][i].get("datamatrix", "")).strip() if i < len(shared_data["pedidos_definitivos"]) else ""
+            
+            # Detectar si hay un nuevo escaneo
+            if nuevo_dm and nuevo_dm != viejo_dm:
+                parsed = traducir_datamatrix(nuevo_dm, BD_MEDICAMENTOS)
+                df_defs_edited.at[i, "lote"] = parsed["lote"]
+                df_defs_edited.at[i, "caducidad"] = parsed["caducidad"]
+                cambios = True
+
         shared_data["pedidos_definitivos"] = df_defs_edited.to_dict(orient="records")
+        
+        if cambios:
+            st.rerun()
         
         st.markdown("<br>", unsafe_allow_html=True)
         col_pdf, col_act = st.columns(2)
         with col_pdf:
-            pdf = PDFAlbaran(orientation='L', unit='mm', format='A4'); pdf.add_page(); pdf.set_font("Arial", 'B', 14); pdf.cell(0, 10, limpiar_texto_pdf("FARMACIA VILLEGAS C.B."), ln=True, align='C'); pdf.set_font("Arial", '', 11); pdf.cell(0, 6, limpiar_texto_pdf("C/ INDEPENDENCIA, 5 - TOMELLOSO"), ln=True, align='C'); pdf.ln(10); pdf.set_font("Arial", 'B', 12); pdf.cell(0, 10, limpiar_texto_pdf(f"ALBARAN DE ENTREGA - Fecha: {datetime.now().strftime('%d/%m/%Y %H:%M')}"), ln=True, align='L'); pdf.ln(5)
-            headers = ["Ref.", "Paciente", "Medicamento", "C.N.", "Posologia", "DataMatrix", "Lote", "Caducidad"]; col_widths = [20, 55, 75, 22, 25, 45, 20, 20]; align_list = ['C', 'L', 'L', 'C', 'C', 'L', 'C', 'C']
-            rows_data = [[str(r.get('ref', '')), str(r.get('paciente', '')), str(r.get('medicamento', '')), str(r.get('cn', '')), str(r.get('posologia', '')), str(r.get('datamatrix', '')), str(r.get('lote', '')), str(r.get('caducidad', ''))] for r in shared_data["pedidos_definitivos"]]
+            # PDF SIN LA COLUMNA DATAMATRIX Y COLUMNAS AJUSTADAS
+            pdf = PDFAlbaran(orientation='L', unit='mm', format='A4')
+            pdf.add_page()
+            pdf.set_font("Arial", 'B', 14)
+            pdf.cell(0, 10, limpiar_texto_pdf("FARMACIA VILLEGAS C.B."), ln=True, align='C')
+            pdf.set_font("Arial", '', 11)
+            pdf.cell(0, 6, limpiar_texto_pdf("C/ INDEPENDENCIA, 5 - TOMELLOSO"), ln=True, align='C')
+            pdf.ln(10)
+            pdf.set_font("Arial", 'B', 12)
+            pdf.cell(0, 10, limpiar_texto_pdf(f"ALBARAN DE ENTREGA - Fecha: {datetime.now().strftime('%d/%m/%Y %H:%M')}"), ln=True, align='L')
+            pdf.ln(5)
+            
+            headers = ["Ref.", "Paciente", "Medicamento", "C.N.", "Posologia", "Lote", "Caducidad"]
+            # Hemos ensanchado Paciente y Medicamento quitando el DataMatrix (Total = 277)
+            col_widths = [20, 60, 90, 25, 35, 25, 22] 
+            align_list = ['C', 'L', 'L', 'C', 'C', 'C', 'C']
+            
+            rows_data = [[str(r.get('ref', '')), str(r.get('paciente', '')), str(r.get('medicamento', '')), str(r.get('cn', '')), str(r.get('posologia', '')), str(r.get('lote', '')), str(r.get('caducidad', ''))] for r in shared_data["pedidos_definitivos"]]
+            
             dibujar_tabla_pdf(pdf, headers, rows_data, col_widths, align_list)
             st.download_button("📄 Imprimir Albarán (PDF)", data=pdf.output(dest='S').encode('latin1'), file_name="Albaran_Entrega.pdf", mime="application/pdf", use_container_width=True)
+        
         with col_act:
             if st.button("📌 Actualizar y Limpiar", use_container_width=True):
+                # Actualizar historial de entregas
                 fecha_hoy = datetime.now().strftime("%d/%m/%Y")
                 for item in shared_data["pedidos_definitivos"]:
                     for pk, p_info in shared_data["lista_pacientes"].items():
@@ -1010,7 +1055,11 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
                             mask = (df_p['CN'].astype(str).str.zfill(6) == str(item.get("cn", "")).zfill(6)) | (df_p['Medicamento'].astype(str) == str(item.get("medicamento", "")))
                             if mask.any(): df_p.loc[mask, 'Ultima Entrega'] = fecha_hoy
                             shared_data["lista_pacientes"][pk]["datos"] = df_p
-                shared_data["pedidos_definitivos"] = []; st.success("¡Actualizado y limpio!"); time.sleep(1.5); st.rerun()
+                shared_data["pedidos_definitivos"] = []
+                st.success("¡Actualizado y limpio!")
+                time.sleep(1.5)
+                st.rerun()
+                
     if st.button("⬅ Volver"): st.session_state["pagina"] = "inicio"; st.rerun()
 
 # ----------------------------------------------------
