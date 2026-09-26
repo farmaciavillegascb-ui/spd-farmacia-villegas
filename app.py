@@ -82,7 +82,6 @@ st.markdown("""
         .block-container { padding-top: 0.3rem !important; padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
         .logo-title { font-size: 16px !important; }
         .status-bar { font-size: 11px !important; padding: 4px 8px !important; }
-        /* TAMAÑO DE BOTONES MÁS GRANDE PARA MÓVIL */
         div.stButton > button { height: 48px !important; font-size: 12px !important; padding: 2px !important; }
         h2 { font-size: 1.25rem !important; text-align: center; }
         h3 { font-size: 1.1rem !important; }
@@ -285,44 +284,55 @@ def cargar_datos_excel():
     return pacientes_dict
 
 # ----------------------------------------------------
-# MOTOR DE LECTURA DATAMATRIX (ACTUALIZADO: LOTE = AI 10)
+# MOTOR DE LECTURA DATAMATRIX (VERSIÓN SEGURA ANTI-FALSOS POSITIVOS)
 # ----------------------------------------------------
 def traducir_datamatrix(raw_code, bd_medicamentos):
     res = {'marca': '', 'farmaco': '', 'tamano': '', 'cn': '', 'lote': '', 'caducidad': '', 'serie': ''}
     if not raw_code: return res
     
-    # 1. Normalizar el carácter de control GS1
-    texto = str(raw_code).replace('\x1D', '<GS>').replace(chr(29), '<GS>')
+    # 1. Normalizar caracteres de control GS1 y cabeceras ISO/IEC habituales
+    texto = str(raw_code).strip()
+    texto = texto.replace('\x1D', '<GS>').replace(chr(29), '<GS>').replace('\u001d', '<GS>')
+    texto = re.sub(r'^\)?>?0?5?', '', texto) # Limpiar prefijos comunes de pistola lectora
     
     try:
-        # 2. Extraer el Código Nacional (CN)
+        # 2. Extraer el Código Nacional (CN) - Soporta 712XXXXXX y GTIN 01XXXXXXXXXXXXXX
         cn_712 = re.search(r'712(\d{6})', texto)
         if cn_712:
             res['cn'] = cn_712.group(1)
         else:
-            gtin_match = re.search(r'01(\d{14})', texto)
+            gtin_match = re.search(r'(?:^|<GS>)01(\d{14})', texto)
+            if not gtin_match:
+                gtin_match = re.search(r'01(\d{14})', texto)
             if gtin_match:
                 gtin = gtin_match.group(1)
                 res['cn'] = gtin[7:13]
 
-        # 3. Extraer Caducidad (AI 17): Siempre son 6 dígitos AAMMDD
-        cad_match = re.search(r'17(\d{6})', texto)
+        # 3. Extraer Caducidad (AI 17) con validación estricta de mes (01-12) y día (01-31)
+        cad_match = re.search(r'17(\d{2})(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])', texto)
         if cad_match:
-            aammdd = cad_match.group(1)
-            yy, mm, dd = aammdd[0:2], aammdd[2:4], aammdd[4:6]
+            yy, mm, dd = cad_match.groups()
             if dd == '00': dd = '01'
             res['caducidad'] = f"{dd}/{mm}/20{yy}"
+        else:
+            # Fallback secundario si viene con formato de 6 dígitos genérico
+            cad_fallback = re.search(r'17(\d{6})', texto)
+            if cad_fallback:
+                aammdd = cad_fallback.group(1)
+                yy, mm, dd = aammdd[0:2], aammdd[2:4], aammdd[4:6]
+                if dd == '00': dd = '01'
+                res['caducidad'] = f"{dd}/{mm}/20{yy}"
             
-        # 4. Extraer el Número de Lote de Fabricación (AI 10)
-        # Asignado directamente a la variable 'lote' para que aparezca en la columna Lote
-        lote_match = re.search(r'10(.*?)(?:<GS>|$)', texto)
+        # 4. Extraer el Número de Lote de Fabricación (AI 10) de forma inteligente
+        # Usamos lookahead estricto para que se detenga ante el verdadero identificador de caducidad válido, serie o <GS>
+        lote_match = re.search(r'10(.*?)(?=<GS>|17\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])|21|\b712\d{6}|$)', texto)
+        if not lote_match:
+            lote_match = re.search(r'10(.*?)(?=<GS>|17\d{6}|21|\b712\d{6}|$)', texto)
+            
         if lote_match:
-            lote_capturado = lote_match.group(1)
-            if '<GS>' not in texto and '21' in lote_capturado and len(lote_capturado) > 6:
-                lote_capturado = lote_capturado.split('21')[0]
-            res['lote'] = lote_capturado.strip()[:20]
+            res['lote'] = lote_match.group(1).strip()[:20]
 
-        # 5. Extraer Número de Serie por si acaso (AI 21)
+        # 5. Extraer Número de Serie (AI 21)
         serie_match = re.search(r'21(.*?)(?:<GS>|$)', texto)
         if serie_match:
             res['serie'] = serie_match.group(1).strip()
@@ -330,7 +340,7 @@ def traducir_datamatrix(raw_code, bd_medicamentos):
     except Exception:
         pass
 
-    # --- FALLBACKS ---
+    # --- FALLBACKS Y LIMPIEZA FINAL ---
     if not res['cn']:
         nums = re.sub(r'\D', '', texto)
         res['cn'] = nums[-6:] if len(nums) >= 6 else "000000"
