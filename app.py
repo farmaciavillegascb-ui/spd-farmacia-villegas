@@ -463,18 +463,67 @@ elif st.session_state["pagina"] == "baja_paciente":
             shared_data["solicitudes_baja"].append({"id": str(uuid.uuid4())[:8], "etiqueta": paciente_seleccionado, "nombre": info_p["nombre"], "ref": info_p["ref"], "estado": "Pendiente", "fecha": datetime.now().strftime("%d/%m/%Y %H:%M")})
             st.success("¡Enviada correctamente!"); time.sleep(1.5); st.rerun()
 
-        st.markdown("---"); st.markdown("##### 📋 Mis Propuestas de Baja:")
-        if shared_data["solicitudes_baja"]: st.dataframe(pd.DataFrame(shared_data["solicitudes_baja"])[['fecha', 'nombre', 'ref', 'estado']], use_container_width=True, hide_index=True)
+        st.markdown("---")
+        
+        c_tit, c_btn = st.columns([0.6, 0.4], gap="large")
+        with c_tit:
+            st.markdown("##### 📋 Mis Propuestas de Baja:")
+        with c_btn:
+            if any(b.get("estado", "").startswith("Validada") for b in shared_data["solicitudes_baja"]):
+                if st.button("🧹 Quitar Validadas", use_container_width=True):
+                    shared_data["solicitudes_baja"] = [b for b in shared_data["solicitudes_baja"] if not b.get("estado", "").startswith("Validada")]
+                    st.rerun()
+
+        if shared_data["solicitudes_baja"]: 
+            st.dataframe(pd.DataFrame(shared_data["solicitudes_baja"])[['fecha', 'nombre', 'ref', 'estado']], use_container_width=True, hide_index=True)
             
     else:
+        # PANTALLA DE CONFIRMACIÓN PREVIA A LA BAJA DEFINITIVA
+        if "baja_a_confirmar" not in st.session_state: st.session_state["baja_a_confirmar"] = None
+        
+        if st.session_state["baja_a_confirmar"]:
+            info_conf = st.session_state["baja_a_confirmar"]
+            st.error(f"### ⚠️ ATENCIÓN: Va a proceder con la BAJA DEFINITIVA")
+            st.markdown(f"**Paciente:** {info_conf['nombre']}")
+            st.markdown("¿Desea continuar con la baja?")
+            
+            c_yes, c_no = st.columns(2)
+            with c_yes:
+                if st.button("✔️ CONFIRMAR BAJA", use_container_width=True):
+                    if info_conf["tipo"] == "directa_sin_dev":
+                        if info_conf["etiqueta"] in shared_data["lista_pacientes"]: del shared_data["lista_pacientes"][info_conf["etiqueta"]]
+                        st.success("¡Paciente dado de baja correctamente!")
+                    elif info_conf["tipo"] == "propuesta_sin_dev":
+                        if info_conf["etiqueta"] in shared_data["lista_pacientes"]: del shared_data["lista_pacientes"][info_conf["etiqueta"]]
+                        if "baja_ref" in info_conf and info_conf["baja_ref"] in shared_data["solicitudes_baja"]:
+                            info_conf["baja_ref"]["estado"] = "Validada sin devolución"
+                        st.success("¡Baja procesada!")
+                    elif info_conf["tipo"] == "finalizar_dev":
+                        if info_conf["etiqueta"] in shared_data["lista_pacientes"]: del shared_data["lista_pacientes"][info_conf["etiqueta"]]
+                        if "baja_ref" in info_conf and info_conf["baja_ref"] in shared_data["solicitudes_baja"]:
+                            info_conf["baja_ref"]["estado"] = "Validada con devolución"
+                        st.session_state["baja_proceso_devolucion"] = None
+                        st.session_state["df_devolucion_admin"] = pd.DataFrame(columns=['Medicamento', 'Descripción', 'CN', 'Lote', 'Caducidad', 'Serie', 'Pastillas restantes'])
+                        st.success("¡Baja completada con devolución!")
+                    
+                    st.session_state["baja_a_confirmar"] = None
+                    time.sleep(1.5); st.rerun()
+            with c_no:
+                if st.button("❌ ANULAR BAJA", use_container_width=True):
+                    st.session_state["baja_a_confirmar"] = None
+                    st.warning("Baja anulada.")
+                    time.sleep(1.0); st.rerun()
+                    
+            st.stop() # Evita que se muestre el resto del panel mientras se espera confirmación
+
+        # PANEL PRINCIPAL DE ADMINISTRACIÓN
         st.markdown("##### ⚡ Dar de Baja Directamente")
         paciente_directo = st.selectbox("Seleccione paciente para dar de baja:", [""] + list(shared_data["lista_pacientes"].keys()), key="select_baja_directa")
         col_dir1, col_dir2 = st.columns(2)
         with col_dir1:
             if st.button("✅ Dar de Baja Directa (SIN Devolución)", use_container_width=True) and paciente_directo:
-                if paciente_directo in shared_data["lista_pacientes"]:
-                    del shared_data["lista_pacientes"][paciente_directo]
-                    st.success("¡Paciente dado de baja correctamente!"); time.sleep(1.5); st.rerun()
+                st.session_state["baja_a_confirmar"] = {"tipo": "directa_sin_dev", "nombre": shared_data["lista_pacientes"][paciente_directo]["nombre"], "etiqueta": paciente_directo}
+                st.rerun()
         with col_dir2:
             if st.button("📦 Dar de Baja Directa (CON Devolución)", use_container_width=True) and paciente_directo:
                 info_p = shared_data["lista_pacientes"][paciente_directo]
@@ -490,21 +539,37 @@ elif st.session_state["pagina"] == "baja_paciente":
         else:
             if "baja_proceso_devolucion" not in st.session_state: st.session_state["baja_proceso_devolucion"] = None
             
-            for baja in pendientes_baja:
-                with st.container(border=True):
-                    st.markdown(f"**Paciente:** {baja['nombre']} (Ref: {baja['ref']})")
-                    col_b1, col_b2 = st.columns(2)
-                    with col_b1:
-                        if st.button(f"✅ Validar SIN Devolución", key=f"sin_dev_{baja['id']}", use_container_width=True):
-                            if baja['etiqueta'] in shared_data["lista_pacientes"]: del shared_data["lista_pacientes"][baja['etiqueta']]
-                            baja["estado"] = "Validada sin devolución"; st.success("¡Baja procesada!"); time.sleep(1.5); st.rerun()
-                    with col_b2:
-                        if st.button(f"📦 Validar CON Devolución", key=f"con_dev_{baja['id']}", use_container_width=True):
-                            st.session_state["baja_proceso_devolucion"] = baja; st.rerun()
+            # Mostrar lista de pendientes SÓLO si no estamos realizando una devolución en este momento
+            if not st.session_state["baja_proceso_devolucion"]:
+                for baja in pendientes_baja:
+                    with st.container(border=True):
+                        st.markdown(f"**Paciente:** {baja['nombre']} (Ref: {baja['ref']})")
+                        col_b1, col_b2 = st.columns(2)
+                        with col_b1:
+                            if st.button(f"✅ Validar SIN Devolución", key=f"sin_dev_{baja['id']}", use_container_width=True):
+                                st.session_state["baja_a_confirmar"] = {"tipo": "propuesta_sin_dev", "nombre": baja["nombre"], "etiqueta": baja["etiqueta"], "baja_ref": baja}
+                                st.rerun()
+                        with col_b2:
+                            if st.button(f"📦 Validar CON Devolución", key=f"con_dev_{baja['id']}", use_container_width=True):
+                                st.session_state["baja_proceso_devolucion"] = baja; st.rerun()
 
+            # PROCESO DE DEVOLUCIÓN ACTIVO
             if st.session_state["baja_proceso_devolucion"]:
                 baja_activa = st.session_state["baja_proceso_devolucion"]
-                st.markdown("---"); st.markdown(f"##### 📦 Devolución para: **{baja_activa['nombre']}**")
+                st.markdown("---"); st.markdown(f"##### 📦 Proceso de Devolución para: **{baja_activa['nombre']}**")
+                
+                # BOTONES PARA CANCELAR O CAMBIAR A SIN DEVOLUCIÓN
+                c_back1, c_back2 = st.columns(2)
+                with c_back1:
+                    if st.button("⬅️ Cancelar (Echar para atrás)", use_container_width=True):
+                        st.session_state["baja_proceso_devolucion"] = None
+                        st.rerun()
+                with c_back2:
+                    if st.button("🔄 Cambiar a SIN Devolución", use_container_width=True):
+                        st.session_state["baja_a_confirmar"] = {"tipo": "propuesta_sin_dev", "nombre": baja_activa["nombre"], "etiqueta": baja_activa["etiqueta"], "baja_ref": baja_activa}
+                        st.session_state["baja_proceso_devolucion"] = None
+                        st.rerun()
+                        
                 if "df_devolucion_admin" not in st.session_state: st.session_state["df_devolucion_admin"] = pd.DataFrame(columns=['Medicamento', 'Descripción', 'CN', 'Lote', 'Caducidad', 'Serie', 'Pastillas restantes'])
                 with st.form("form_dm_baja_admin", clear_on_submit=True):
                     cad_dm = st.text_input("Escanee DataMatrix devuelto:")
@@ -521,8 +586,8 @@ elif st.session_state["pagina"] == "baja_paciente":
                         st.download_button("📄 Imprimir PDF", data=generar_albaran_devolucion_pdf(baja_activa['nombre'], baja_activa['ref'], st.session_state["df_devolucion_admin"].to_dict(orient="records")), file_name=f"Devolucion_{baja_activa['ref']}.pdf", mime="application/pdf", use_container_width=True)
                     with c_fin:
                         if st.button("💾 Finalizar Baja", use_container_width=True):
-                            if baja_activa['etiqueta'] in shared_data["lista_pacientes"]: del shared_data["lista_pacientes"][baja_activa['etiqueta']]
-                            baja_activa["estado"] = "Validada con devolución"; st.session_state["baja_proceso_devolucion"] = None; st.session_state["df_devolucion_admin"] = pd.DataFrame(columns=['Medicamento', 'Descripción', 'CN', 'Lote', 'Caducidad', 'Serie', 'Pastillas restantes']); st.success("¡Baja completada!"); time.sleep(1.5); st.rerun()
+                            st.session_state["baja_a_confirmar"] = {"tipo": "finalizar_dev", "nombre": baja_activa["nombre"], "etiqueta": baja_activa["etiqueta"], "baja_ref": baja_activa}
+                            st.rerun()
 
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("⬅ Volver al Menú", use_container_width=True): st.session_state["pagina"] = "inicio"; st.rerun()
