@@ -964,13 +964,20 @@ elif st.session_state["pagina"] == "detalle_paciente":
             if 'Pedido' in df_mostrar.columns: df_mostrar['Pedido'] = df_mostrar['Pedido'].astype(bool)
             if 'Incidencia' in df_mostrar.columns: df_mostrar['Incidencia'] = df_mostrar['Incidencia'].astype(bool)
 
+            # Comprueba si está en Propuesta O en Pedidos Definitivos
             def esta_bloqueado(ref_pac, cn_val, med_val):
+                # 1. Revisar propuesta de pedido
                 for p in shared_data["solicitud_pedido"]:
                     if str(p.get("ref", "")) == str(ref_pac):
                         if (str(p.get("cn", "")) == str(cn_val)) or (str(p.get("medicamento", "")) == str(med_val)):
                             ts = p.get("timestamp", datetime.now())
                             if datetime.now() - ts < timedelta(days=7):
                                 return True
+                # 2. Revisar pedidos definitivos
+                for p in shared_data["pedidos_definitivos"]:
+                    if str(p.get("ref", "")) == str(ref_pac):
+                        if (str(p.get("cn", "")) == str(cn_val)) or (str(p.get("medicamento", "")) == str(med_val)):
+                            return True
                 return False
 
             def color_filas_paciente(row):
@@ -1032,6 +1039,33 @@ elif st.session_state["pagina"] == "detalle_paciente":
                         
                 shared_data["lista_pacientes"][pk]["datos"] = info["datos"]
                 st.rerun()
+
+            # OPCIÓN DE DESBLOQUEO EXTRAORDINARIO PARA EL FARMACÉUTICO
+            if rol_actual == "admin":
+                st.markdown("---")
+                st.markdown("##### 🔓 Desbloqueo Extraordinario (Farmacia)")
+                bloqueados_en_ficha = []
+                for idx, row in info["datos"].iterrows():
+                    if esta_bloqueado(info["ref"], row.get("CN", ""), row.get("Medicamento", "")):
+                        bloqueados_en_ficha.append((idx, row.get("Medicamento", ""), row.get("CN", "")))
+                
+                if bloqueados_en_ficha:
+                    st.info("ℹ️ Los medicamentos listados a continuación están bloqueados (en propuesta o pedidos definitivos). Como último recurso, el farmacéutico puede desbloquearlos individualmente:")
+                    for idx_med, med_nom, med_cn in bloqueados_en_ficha:
+                        col_unblock_info, col_unblock_btn = st.columns([3, 1])
+                        with col_unblock_info:
+                            st.markdown(f"• **{med_nom}** (CN: {med_cn})")
+                        with col_unblock_btn:
+                            if st.button(f"Desbloquear #{idx_med}", key=f"unblock_item_{pk}_{idx_med}", use_container_width=True):
+                                # Eliminar de solicitud_pedido si existe
+                                shared_data["solicitud_pedido"] = [p for p in shared_data["solicitud_pedido"] if not (str(p.get("ref", "")) == str(info["ref"]) and (str(p.get("cn", "")) == str(med_cn) or str(p.get("medicamento", "")) == str(med_nom)))]
+                                # Eliminar de pedidos_definitivos si existe
+                                shared_data["pedidos_definitivos"] = [p for p in shared_data["pedidos_definitivos"] if not (str(p.get("ref", "")) == str(info["ref"]) and (str(p.get("cn", "")) == str(med_cn) or str(p.get("medicamento", "")) == str(med_nom)))]
+                                st.success("¡Medicamento desbloqueado con éxito!")
+                                time.sleep(1.0)
+                                st.rerun()
+                else:
+                    st.caption("No hay medicamentos bloqueados para este paciente en este momento.")
 
             st.markdown("<br>", unsafe_allow_html=True)
             col_btn_ped, col_btn_inc = st.columns(2) if rol_actual == "admin" else (st.container(), None)
@@ -1271,7 +1305,6 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
                     st.session_state["confirmar_borrado_sin_imprimir"] = True
                 else:
                     st.session_state["confirmar_borrado_sin_imprimir"] = False
-                    # Proceder con la actualización y limpieza
                     fecha_hoy = datetime.now().strftime("%d/%m/%Y")
                     for item in shared_data["pedidos_definitivos"]:
                         for pk, p_info in shared_data["lista_pacientes"].items():
