@@ -946,6 +946,47 @@ elif st.session_state["pagina"] == "detalle_paciente":
             with col_canc:
                 if st.button("❌ Cancelar", use_container_width=True): st.session_state["modo_incidencia"] = False; st.rerun()
         else:
+            # ----------------------------------------------------
+            # SECCIÓN: AÑADIR NUEVO MEDICAMENTO (DISPONIBLE PARA CUALQUIER ROL)
+            # ----------------------------------------------------
+            with st.expander("➕ Añadir Nuevo Medicamento al Tratamiento"):
+                if BD_MEDICAMENTOS:
+                    lista_opciones_meds = [""] + [f"{d['farmaco']} (Lab: {d['marca']} - CN: {cn})" for cn, d in BD_MEDICAMENTOS.items()]
+                    med_seleccionado = st.selectbox("Escribe o selecciona el medicamento:", options=lista_opciones_meds, key=f"select_nuevo_med_{pk}")
+                    posologia_nueva = st.text_input("Posología:", key=f"input_nueva_pos_{pk}", placeholder="Ej: 1 comprimido cada 24 horas")
+                    
+                    if st.button("➕ Añadir a la Ficha del Paciente", key=f"btn_add_med_{pk}", use_container_width=True):
+                        if med_seleccionado and med_seleccionado != "":
+                            match_cn = re.search(r'CN:\s*(\d{6})', med_seleccionado)
+                            cn_encontrado = match_cn.group(1) if match_cn else ""
+                            nombre_farmaco = med_seleccionado.split(" (")[0]
+                            
+                            nueva_fila = {
+                                'Medicamento': nombre_farmaco,
+                                'CN': cn_encontrado,
+                                'Posologia': posologia_nueva.strip(),
+                                'Ultima Entrega': '',
+                                'Pedido': False,
+                                'Incidencia': False
+                            }
+                            
+                            df_p = info["datos"].copy()
+                            for col in ['Medicamento', 'CN', 'Posologia', 'Ultima Entrega', 'Pedido', 'Incidencia']:
+                                if col not in df_p.columns:
+                                    df_p[col] = False if col in ['Pedido', 'Incidencia'] else ''
+                            
+                            info["datos"] = pd.concat([df_p, pd.DataFrame([nueva_fila])], ignore_index=True)
+                            shared_data["lista_pacientes"][pk]["datos"] = info["datos"]
+                            st.success(f"¡Medicamento '{nombre_farmaco}' añadido correctamente!")
+                            time.sleep(1.0)
+                            st.rerun()
+                        else:
+                            st.warning("⚠️ Selecciona un medicamento válido de la lista.")
+                else:
+                    st.warning("⚠️ No se ha encontrado el archivo `listado_de_medicamentos.xlsx` o está vacío.")
+
+            st.markdown("---")
+
             df_pac = info["datos"].copy()
             cols = df_pac.columns.tolist()
             
@@ -964,16 +1005,13 @@ elif st.session_state["pagina"] == "detalle_paciente":
             if 'Pedido' in df_mostrar.columns: df_mostrar['Pedido'] = df_mostrar['Pedido'].astype(bool)
             if 'Incidencia' in df_mostrar.columns: df_mostrar['Incidencia'] = df_mostrar['Incidencia'].astype(bool)
 
-            # Comprueba si está en Propuesta O en Pedidos Definitivos
             def esta_bloqueado(ref_pac, cn_val, med_val):
-                # 1. Revisar propuesta de pedido
                 for p in shared_data["solicitud_pedido"]:
                     if str(p.get("ref", "")) == str(ref_pac):
                         if (str(p.get("cn", "")) == str(cn_val)) or (str(p.get("medicamento", "")) == str(med_val)):
                             ts = p.get("timestamp", datetime.now())
                             if datetime.now() - ts < timedelta(days=7):
                                 return True
-                # 2. Revisar pedidos definitivos
                 for p in shared_data["pedidos_definitivos"]:
                     if str(p.get("ref", "")) == str(ref_pac):
                         if (str(p.get("cn", "")) == str(cn_val)) or (str(p.get("medicamento", "")) == str(med_val)):
@@ -1040,7 +1078,6 @@ elif st.session_state["pagina"] == "detalle_paciente":
                 shared_data["lista_pacientes"][pk]["datos"] = info["datos"]
                 st.rerun()
 
-            # OPCIÓN DE DESBLOQUEO EXTRAORDINARIO PARA EL FARMACÉUTICO
             if rol_actual == "admin":
                 st.markdown("---")
                 st.markdown("##### 🔓 Desbloqueo Extraordinario (Farmacia)")
@@ -1050,16 +1087,14 @@ elif st.session_state["pagina"] == "detalle_paciente":
                         bloqueados_en_ficha.append((idx, row.get("Medicamento", ""), row.get("CN", "")))
                 
                 if bloqueados_en_ficha:
-                    st.info("ℹ️ Los medicamentos listados a continuación están bloqueados (en propuesta o pedidos definitivos). Como último recurso, el farmacéutico puede desbloquearlos individualmente:")
+                    st.info("ℹ️ Los medicamentos listados a continuación están bloqueados. El farmacéutico puede desbloquearlos individualmente si es necesario:")
                     for idx_med, med_nom, med_cn in bloqueados_en_ficha:
                         col_unblock_info, col_unblock_btn = st.columns([3, 1])
                         with col_unblock_info:
                             st.markdown(f"• **{med_nom}** (CN: {med_cn})")
                         with col_unblock_btn:
                             if st.button(f"Desbloquear #{idx_med}", key=f"unblock_item_{pk}_{idx_med}", use_container_width=True):
-                                # Eliminar de solicitud_pedido si existe
                                 shared_data["solicitud_pedido"] = [p for p in shared_data["solicitud_pedido"] if not (str(p.get("ref", "")) == str(info["ref"]) and (str(p.get("cn", "")) == str(med_cn) or str(p.get("medicamento", "")) == str(med_nom)))]
-                                # Eliminar de pedidos_definitivos si existe
                                 shared_data["pedidos_definitivos"] = [p for p in shared_data["pedidos_definitivos"] if not (str(p.get("ref", "")) == str(info["ref"]) and (str(p.get("cn", "")) == str(med_cn) or str(p.get("medicamento", "")) == str(med_nom)))]
                                 st.success("¡Medicamento desbloqueado con éxito!")
                                 time.sleep(1.0)
