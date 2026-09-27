@@ -947,12 +947,29 @@ elif st.session_state["pagina"] == "detalle_paciente":
                 if st.button("❌ Cancelar", use_container_width=True): st.session_state["modo_incidencia"] = False; st.rerun()
         else:
             # ----------------------------------------------------
-            # SECCIÓN: AÑADIR NUEVO MEDICAMENTO (DISPONIBLE PARA CUALQUIER ROL)
+            # SECCIÓN: AÑADIR NUEVO MEDICAMENTO (BUSCADOR RÁPIDO Y OPTIMIZADO)
             # ----------------------------------------------------
             with st.expander("➕ Añadir Nuevo Medicamento al Tratamiento"):
                 if BD_MEDICAMENTOS:
-                    lista_opciones_meds = [""] + [f"{d['farmaco']} (Lab: {d['marca']} - CN: {cn})" for cn, d in BD_MEDICAMENTOS.items()]
-                    med_seleccionado = st.selectbox("Escribe o selecciona el medicamento:", options=lista_opciones_meds, key=f"select_nuevo_med_{pk}")
+                    st.caption("🔍 Escribe en el buscador para filtrar rápidamente los medicamentos:")
+                    filtro_med = st.text_input("Filtrar medicamento:", key=f"filtro_med_{pk}", placeholder="Ej: paracetamol, ibuprofeno...")
+                    
+                    opciones_meds = [""]
+                    if filtro_med and len(filtro_med.strip()) >= 2:
+                        f_lower = filtro_med.strip().lower()
+                        count = 0
+                        for cn, d in BD_MEDICAMENTOS.items():
+                            item_str = f"{d.get('farmaco', '')} (Lab: {d.get('marca', '')} - CN: {cn})"
+                            if f_lower in item_str.lower():
+                                opciones_meds.append(item_str)
+                                count += 1
+                                if count >= 40: # Límite estricto para garantizar velocidad máxima
+                                    break
+                    else:
+                        for cn, d in list(BD_MEDICAMENTOS.items())[:25]:
+                            opciones_meds.append(f"{d.get('farmaco', '')} (Lab: {d.get('marca', '')} - CN: {cn})")
+                    
+                    med_seleccionado = st.selectbox("Seleccione el medicamento:", options=opciones_meds, key=f"select_nuevo_med_{pk}")
                     posologia_nueva = st.text_input("Posología:", key=f"input_nueva_pos_{pk}", placeholder="Ej: 1 comprimido cada 24 horas")
                     
                     if st.button("➕ Añadir a la Ficha del Paciente", key=f"btn_add_med_{pk}", use_container_width=True):
