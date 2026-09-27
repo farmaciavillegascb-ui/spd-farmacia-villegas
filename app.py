@@ -947,7 +947,7 @@ elif st.session_state["pagina"] == "detalle_paciente":
                 if st.button("❌ Cancelar", use_container_width=True): st.session_state["modo_incidencia"] = False; st.rerun()
         else:
             # ----------------------------------------------------
-            # SECCIÓN: AÑADIR NUEVO MEDICAMENTO (BUSCADOR RÁPIDO Y OPTIMIZADO)
+            # SECCIÓN: AÑADIR NUEVO MEDICAMENTO (BUSCADOR RÁPIDO Y CAMPOS COMPLETOS)
             # ----------------------------------------------------
             with st.expander("➕ Añadir Nuevo Medicamento al Tratamiento"):
                 if BD_MEDICAMENTOS:
@@ -963,7 +963,7 @@ elif st.session_state["pagina"] == "detalle_paciente":
                             if f_lower in item_str.lower():
                                 opciones_meds.append(item_str)
                                 count += 1
-                                if count >= 40: # Límite estricto para garantizar velocidad máxima
+                                if count >= 40: # Límite estricto para velocidad máxima
                                     break
                     else:
                         for cn, d in list(BD_MEDICAMENTOS.items())[:25]:
@@ -971,31 +971,37 @@ elif st.session_state["pagina"] == "detalle_paciente":
                     
                     med_seleccionado = st.selectbox("Seleccione el medicamento:", options=opciones_meds, key=f"select_nuevo_med_{pk}")
                     posologia_nueva = st.text_input("Posología:", key=f"input_nueva_pos_{pk}", placeholder="Ej: 1 comprimido cada 24 horas")
+                    emblistable_nueva = st.selectbox("¿Es emblistable?:", options=["Sí", "No"], key=f"select_nueva_emb_{pk}")
                     
                     if st.button("➕ Añadir a la Ficha del Paciente", key=f"btn_add_med_{pk}", use_container_width=True):
                         if med_seleccionado and med_seleccionado != "":
                             match_cn = re.search(r'CN:\s*(\d{6})', med_seleccionado)
                             cn_encontrado = match_cn.group(1) if match_cn else ""
                             nombre_farmaco = med_seleccionado.split(" (")[0]
+                            fecha_hoy = datetime.now().strftime("%d/%m/%Y")
                             
                             nueva_fila = {
+                                'Ref. paciente': info["ref"],
+                                'Nombre': info["nombre"],
                                 'Medicamento': nombre_farmaco,
                                 'CN': cn_encontrado,
                                 'Posologia': posologia_nueva.strip(),
+                                'Fecha inicio': fecha_hoy,
+                                'Emblistable': emblistable_nueva,
                                 'Ultima Entrega': '',
                                 'Pedido': False,
                                 'Incidencia': False
                             }
                             
                             df_p = info["datos"].copy()
-                            for col in ['Medicamento', 'CN', 'Posologia', 'Ultima Entrega', 'Pedido', 'Incidencia']:
+                            for col, val in nueva_fila.items():
                                 if col not in df_p.columns:
-                                    df_p[col] = False if col in ['Pedido', 'Incidencia'] else ''
+                                    df_p[col] = False if isinstance(val, bool) else ''
                             
                             info["datos"] = pd.concat([df_p, pd.DataFrame([nueva_fila])], ignore_index=True)
                             shared_data["lista_pacientes"][pk]["datos"] = info["datos"]
-                            st.success(f"¡Medicamento '{nombre_farmaco}' añadido correctamente!")
-                            time.sleep(1.0)
+                            st.success(f"¡Medicamento '{nombre_farmaco}' añadido correctamente (Ref: {info['ref']}, Fecha: {fecha_hoy}, Emblistable: {emblistable_nueva})!")
+                            time.sleep(1.2)
                             st.rerun()
                         else:
                             st.warning("⚠️ Selecciona un medicamento válido de la lista.")
