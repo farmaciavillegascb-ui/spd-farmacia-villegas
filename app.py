@@ -266,6 +266,7 @@ def cargar_datos_excel():
             etiqueta = f"{ref_paciente} — {nombre_paciente}"
             
             if 'Fecha inicio' not in df_hoja.columns: df_hoja['Fecha inicio'] = ""
+            if 'Emblistable' not in df_hoja.columns: df_hoja['Emblistable'] = "Sí"
             if 'Ultima Entrega' not in df_hoja.columns: df_hoja['Ultima Entrega'] = ""
             if 'Pedido' not in df_hoja.columns: df_hoja['Pedido'] = False
             else: df_hoja['Pedido'] = df_hoja['Pedido'].astype(bool)
@@ -775,6 +776,7 @@ elif st.session_state["pagina"] == "alta_paciente":
                         df_final_dir['Ultima Entrega'] = ""
                         if 'Pedido' not in df_final_dir.columns: df_final_dir['Pedido'] = False
                         if 'Incidencia' not in df_final_dir.columns: df_final_dir['Incidencia'] = False
+                        if 'Emblistable' not in df_final_dir.columns: df_final_dir['Emblistable'] = "Sí"
                         
                         shared_data["lista_pacientes"][f"{r_str} — {n_str}"] = {
                             "ref": r_str, "nombre": n_str, "cip": c_str, "hoja": r_str, "datos": df_final_dir
@@ -794,7 +796,7 @@ elif st.session_state["pagina"] == "alta_paciente":
             st.markdown("##### 1️⃣ Descargar Plantilla")
             st.info("Descarga este archivo Excel, rellénalo con todos los pacientes y sus medicamentos (una fila por medicamento), y súbelo en el paso 2.")
             
-            df_template = pd.DataFrame(columns=["Ref_Paciente", "Nombre", "CIP", "Medicamento", "CN", "Posologia"])
+            df_template = pd.DataFrame(columns=["Ref_Paciente", "Nombre", "CIP", "Medicamento", "CN", "Posologia", "Emblistable"])
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                 df_template.to_excel(writer, index=False, sheet_name='Carga_Masiva')
@@ -834,6 +836,11 @@ elif st.session_state["pagina"] == "alta_paciente":
                                 cip_str = str(grupo['CIP'].iloc[0]).strip() if pd.notna(grupo['CIP'].iloc[0]) else ""
                                 
                                 df_meds = grupo[['Medicamento', 'CN', 'Posologia']].copy()
+                                if 'Emblistable' in grupo.columns:
+                                    df_meds['Emblistable'] = grupo['Emblistable'].fillna("Sí")
+                                else:
+                                    df_meds['Emblistable'] = "Sí"
+                                    
                                 df_meds['Ultima Entrega'] = ""
                                 df_meds['Pedido'] = False
                                 df_meds['Incidencia'] = False
@@ -947,66 +954,77 @@ elif st.session_state["pagina"] == "detalle_paciente":
                 if st.button("❌ Cancelar", use_container_width=True): st.session_state["modo_incidencia"] = False; st.rerun()
         else:
             # ----------------------------------------------------
-            # SECCIÓN: AÑADIR NUEVO MEDICAMENTO (BUSCADOR RÁPIDO Y CAMPOS COMPLETOS)
+            # SECCIÓN: AÑADIR NUEVO MEDICAMENTO (CATÁLOGO O MANUAL)
             # ----------------------------------------------------
             with st.expander("➕ Añadir Nuevo Medicamento al Tratamiento"):
-                if BD_MEDICAMENTOS:
-                    st.caption("🔍 Escribe en el buscador para filtrar rápidamente los medicamentos:")
-                    filtro_med = st.text_input("Filtrar medicamento:", key=f"filtro_med_{pk}", placeholder="Ej: paracetamol, ibuprofeno...")
-                    
-                    opciones_meds = [""]
-                    if filtro_med and len(filtro_med.strip()) >= 2:
-                        f_lower = filtro_med.strip().lower()
-                        count = 0
-                        for cn, d in BD_MEDICAMENTOS.items():
-                            item_str = f"{d.get('farmaco', '')} (Lab: {d.get('marca', '')} - CN: {cn})"
-                            if f_lower in item_str.lower():
-                                opciones_meds.append(item_str)
-                                count += 1
-                                if count >= 40: # Límite estricto para velocidad máxima
-                                    break
-                    else:
-                        for cn, d in list(BD_MEDICAMENTOS.items())[:25]:
-                            opciones_meds.append(f"{d.get('farmaco', '')} (Lab: {d.get('marca', '')} - CN: {cn})")
-                    
-                    med_seleccionado = st.selectbox("Seleccione el medicamento:", options=opciones_meds, key=f"select_nuevo_med_{pk}")
-                    posologia_nueva = st.text_input("Posología:", key=f"input_nueva_pos_{pk}", placeholder="Ej: 1 comprimido cada 24 horas")
-                    emblistable_nueva = st.selectbox("¿Es emblistable?:", options=["Sí", "No"], key=f"select_nueva_emb_{pk}")
-                    
-                    if st.button("➕ Añadir a la Ficha del Paciente", key=f"btn_add_med_{pk}", use_container_width=True):
+                modo_add = st.radio("Método de adición:", ["Buscar en listado oficial", "Añadir manualmente (sin Código Nacional)"], horizontal=True, key=f"modo_add_{pk}")
+                
+                nombre_farmaco = ""
+                cn_encontrado = ""
+                
+                if modo_add == "Buscar en listado oficial":
+                    if BD_MEDICAMENTOS:
+                        st.caption("🔍 Escribe en el buscador para filtrar rápidamente los medicamentos:")
+                        filtro_med = st.text_input("Filtrar medicamento:", key=f"filtro_med_{pk}", placeholder="Ej: paracetamol, ibuprofeno...")
+                        
+                        opciones_meds = [""]
+                        if filtro_med and len(filtro_med.strip()) >= 2:
+                            f_lower = filtro_med.strip().lower()
+                            count = 0
+                            for cn, d in BD_MEDICAMENTOS.items():
+                                item_str = f"{d.get('farmaco', '')} (Lab: {d.get('marca', '')} - CN: {cn})"
+                                if f_lower in item_str.lower():
+                                    opciones_meds.append(item_str)
+                                    count += 1
+                                    if count >= 40:
+                                        break
+                        else:
+                            for cn, d in list(BD_MEDICAMENTOS.items())[:25]:
+                                opciones_meds.append(f"{d.get('farmaco', '')} (Lab: {d.get('marca', '')} - CN: {cn})")
+                        
+                        med_seleccionado = st.selectbox("Seleccione el medicamento:", options=opciones_meds, key=f"select_nuevo_med_{pk}")
                         if med_seleccionado and med_seleccionado != "":
                             match_cn = re.search(r'CN:\s*(\d{6})', med_seleccionado)
                             cn_encontrado = match_cn.group(1) if match_cn else ""
                             nombre_farmaco = med_seleccionado.split(" (")[0]
-                            fecha_hoy = datetime.now().strftime("%d/%m/%Y")
-                            
-                            nueva_fila = {
-                                'Ref. paciente': info["ref"],
-                                'Nombre': info["nombre"],
-                                'Medicamento': nombre_farmaco,
-                                'CN': cn_encontrado,
-                                'Posologia': posologia_nueva.strip(),
-                                'Fecha inicio': fecha_hoy,
-                                'Emblistable': emblistable_nueva,
-                                'Ultima Entrega': '',
-                                'Pedido': False,
-                                'Incidencia': False
-                            }
-                            
-                            df_p = info["datos"].copy()
-                            for col, val in nueva_fila.items():
-                                if col not in df_p.columns:
-                                    df_p[col] = False if isinstance(val, bool) else ''
-                            
-                            info["datos"] = pd.concat([df_p, pd.DataFrame([nueva_fila])], ignore_index=True)
-                            shared_data["lista_pacientes"][pk]["datos"] = info["datos"]
-                            st.success(f"¡Medicamento '{nombre_farmaco}' añadido correctamente (Ref: {info['ref']}, Fecha: {fecha_hoy}, Emblistable: {emblistable_nueva})!")
-                            time.sleep(1.2)
-                            st.rerun()
-                        else:
-                            st.warning("⚠️ Selecciona un medicamento válido de la lista.")
+                    else:
+                        st.warning("⚠️ No se ha encontrado el archivo `listado_de_medicamentos.xlsx` o está vacío.")
                 else:
-                    st.warning("⚠️ No se ha encontrado el archivo `listado_de_medicamentos.xlsx` o está vacío.")
+                    nombre_farmaco = st.text_input("Nombre del Medicamento:", key=f"manual_nombre_{pk}", placeholder="Ej: Fórmula magistral / Medicamento sin CN")
+                    cn_encontrado = st.text_input("Código Nacional (Opcional):", key=f"manual_cn_{pk}", placeholder="Dejar en blanco si no tiene")
+                
+                posologia_nueva = st.text_input("Posología:", key=f"input_nueva_pos_{pk}", placeholder="Ej: 1 comprimido cada 24 horas")
+                emblistable_nueva = st.selectbox("¿Es emblistable?:", options=["Sí", "No"], key=f"select_nueva_emb_{pk}")
+                
+                if st.button("➕ Añadir a la Ficha del Paciente", key=f"btn_add_med_{pk}", use_container_width=True):
+                    if nombre_farmaco.strip():
+                        fecha_hoy = datetime.now().strftime("%d/%m/%Y")
+                        
+                        nueva_fila = {
+                            'Ref. paciente': info["ref"],
+                            'Nombre': info["nombre"],
+                            'Medicamento': nombre_farmaco.strip(),
+                            'CN': cn_encontrado.strip(),
+                            'Posologia': posologia_nueva.strip(),
+                            'Fecha inicio': fecha_hoy,
+                            'Emblistable': emblistable_nueva,
+                            'Ultima Entrega': '',
+                            'Pedido': False,
+                            'Incidencia': False
+                        }
+                        
+                        df_p = info["datos"].copy()
+                        for col, val in nueva_fila.items():
+                            if col not in df_p.columns:
+                                df_p[col] = False if isinstance(val, bool) else ''
+                        
+                        info["datos"] = pd.concat([df_p, pd.DataFrame([nueva_fila])], ignore_index=True)
+                        shared_data["lista_pacientes"][pk]["datos"] = info["datos"]
+                        st.success(f"¡Medicamento '{nombre_farmaco.strip()}' añadido correctamente!")
+                        time.sleep(1.2)
+                        st.rerun()
+                    else:
+                        st.warning("⚠️ Debes indicar o seleccionar el nombre del medicamento.")
 
             st.markdown("---")
 
@@ -1058,7 +1076,9 @@ elif st.session_state["pagina"] == "detalle_paciente":
             
             col_config_dict = {}
             for col in df_mostrar.columns:
-                if col not in ['Pedido', 'Incidencia']: 
+                if col == 'Emblistable':
+                    col_config_dict[col] = st.column_config.SelectboxColumn("Emblistable", options=["Sí", "No"], required=True)
+                elif col not in ['Pedido', 'Incidencia']: 
                     col_config_dict[col] = st.column_config.TextColumn(disabled=True)
                 elif col == 'Pedido': 
                     es_disabled = (rol_actual != "admin")
@@ -1075,7 +1095,7 @@ elif st.session_state["pagina"] == "detalle_paciente":
                 column_config=col_config_dict
             )
             
-            if rol_actual == "admin" and not df_edited_result.equals(df_mostrar):
+            if not df_edited_result.equals(df_mostrar):
                 for idx in range(len(df_edited_result)):
                     ref_p = info["ref"]
                     cn_p = df_edited_result.loc[idx, 'CN'] if 'CN' in df_edited_result.columns else ""
@@ -1095,8 +1115,9 @@ elif st.session_state["pagina"] == "detalle_paciente":
                         else: df_edited_result.loc[idx, 'Incidencia'] = False
 
                 for idx in range(len(df_edited_result)):
-                    if 'Pedido' in df_edited_result.columns and 'Pedido' in info["datos"].columns: info["datos"].loc[idx, 'Pedido'] = df_edited_result.loc[idx, 'Pedido']
-                    if rol_actual == "admin" and 'Incidencia' in df_edited_result.columns and 'Incidencia' in info["datos"].columns: info["datos"].loc[idx, 'Incidencia'] = df_edited_result.loc[idx, 'Incidencia']
+                    for col_name in df_mostrar.columns:
+                        if col_name in info["datos"].columns:
+                            info["datos"].loc[idx, col_name] = df_edited_result.loc[idx, col_name]
                         
                 shared_data["lista_pacientes"][pk]["datos"] = info["datos"]
                 st.rerun()
