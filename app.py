@@ -1,5 +1,6 @@
 import os
 import io
+import json
 import re  # Librería para procesar el texto del DataMatrix
 # ----------------------------------------------------
 # FORZAR TEMA CLARO (LIGHT MODE) AUTOMÁTICAMENTE
@@ -230,7 +231,7 @@ def generar_albaran_devolucion_pdf(nombre_paciente, ref_paciente, lista_devoluci
     return pdf.output(dest='S').encode('latin1')
 
 # ----------------------------------------------------
-# CARGA DE BASE DE DATOS DE MEDICAMENTOS (EN CACHÉ)
+# CARGA Y GUARDADO PERSISTENTE (EXCEL Y JSON)
 # ----------------------------------------------------
 @st.cache_data
 def cargar_base_medicamentos():
@@ -250,6 +251,7 @@ def cargar_base_medicamentos():
 
 BD_MEDICAMENTOS = cargar_base_medicamentos()
 EXCEL_PATH = "Tratamientos_Por_Paciente.xlsx"
+ESTADO_JSON_PATH = "estado_sistema.json"
 
 def cargar_datos_excel():
     if not os.path.exists(EXCEL_PATH): return {}
@@ -277,6 +279,55 @@ def cargar_datos_excel():
                 "ref": ref_paciente, "nombre": nombre_paciente, "cip": cip_paciente, "hoja": hoja, "datos": df_hoja
             }
     return pacientes_dict
+
+def guardar_pacientes_excel(lista_pacientes_dict):
+    """Guarda de forma persistente todos los cambios de pacientes en el archivo Excel principal."""
+    try:
+        with pd.ExcelWriter(EXCEL_PATH, engine='openpyxl') as writer:
+            for pk, info in lista_pacientes_dict.items():
+                hoja_nombre = info.get("hoja", info["ref"])
+                df_p = info["datos"].copy()
+                if 'Ref. paciente' not in df_p.columns: df_p['Ref. paciente'] = info["ref"]
+                if 'Nombre' not in df_p.columns: df_p['Nombre'] = info["nombre"]
+                if 'CIP' not in df_p.columns: df_p['CIP'] = info["cip"]
+                df_p.to_excel(writer, index=False, sheet_name=str(hoja_nombre))
+    except Exception as e:
+        print(f"Error al guardar el Excel de pacientes: {e}")
+
+def guardar_estado_json(shared_state):
+    """Guarda propuestas, pedidos, incidencias y solicitudes en un archivo JSON en disco."""
+    try:
+        data_to_save = {
+            "solicitud_pedido": [
+                {**p, "timestamp": p["timestamp"].isoformat() if isinstance(p.get("timestamp"), datetime) else str(p.get("timestamp"))}
+                for p in shared_state.get("solicitud_pedido", [])
+            ],
+            "pedidos_definitivos": shared_state.get("pedidos_definitivos", []),
+            "incidencias_activas": shared_state.get("incidencias_activas", []),
+            "solicitudes_alta": shared_state.get("solicitudes_alta", []),
+            "solicitudes_baja": shared_state.get("solicitudes_baja", [])
+        }
+        with open(ESTADO_JSON_PATH, "w", encoding="utf-8") as f:
+            json.dump(data_to_save, f, ensure_ascii=False, indent=4)
+    except Exception as e:
+        print(f"Error al guardar el estado JSON: {e}")
+
+def cargar_estado_json():
+    """Carga propuestas, pedidos, incidencias y solicitudes desde el archivo JSON si existe."""
+    if os.path.exists(ESTADO_JSON_PATH):
+        try:
+            with open(ESTADO_JSON_PATH, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                for p in data.get("solicitud_pedido", []):
+                    if "timestamp" in p and isinstance(p["timestamp"], str):
+                        try:
+                            p["timestamp"] = datetime.fromisoformat(p["timestamp"])
+                        except:
+                            p["timestamp"] = datetime.now()
+                return data
+        except Exception as e:
+            print(f"Error al cargar estado JSON: {e}")
+    return None
 
 # ----------------------------------------------------
 # MOTOR DE LECTURA DATAMATRIX (INDEPENDIENTE DEL ORDEN)
@@ -352,10 +403,15 @@ def traducir_datamatrix(raw_code, bd_medicamentos):
 
 @st.cache_resource
 def get_shared_data():
+    estado_previo = cargar_estado_json()
+    
     return {
         "lista_pacientes": cargar_datos_excel(),
-        "solicitud_pedido": [], "pedidos_definitivos": [], "incidencias_activas": [], 
-        "solicitudes_alta": [], "solicitudes_baja": [],
+        "solicitud_pedido": estado_previo.get("solicitud_pedido", []) if estado_previo else [], 
+        "pedidos_definitivos": estado_previo.get("pedidos_definitivos", []) if estado_previo else [], 
+        "incidencias_activas": estado_previo.get("incidencias_activas", []) if estado_previo else [], 
+        "solicitudes_alta": estado_previo.get("solicitudes_alta", []) if estado_previo else [], 
+        "solicitudes_baja": estado_previo.get("solicitudes_baja", []) if estado_previo else [],
         "roles_sistema": {
             "admin": ["pacientes", "altas", "bajas", "propuesta", "pedidos_definitivos", "incidencias", "validar_incidencias", "usuarios"],
             "enfermera": ["pacientes", "altas", "bajas", "propuesta", "pedidos_definitivos", "incidencias"]
@@ -441,7 +497,10 @@ now = datetime.now()
 days_since_wed = (now.weekday() - 2) % 7
 last_wednesday = (now - timedelta(days=days_since_wed)).replace(hour=0, minute=0, second=0, microsecond=0)
 
+prev_len_prop = len(shared_data["solicitud_pedido"])
 shared_data["solicitud_pedido"] = [p for p in shared_data["solicitud_pedido"] if p.get("timestamp", last_wednesday) >= last_wednesday]
+if len(shared_data["solicitud_pedido"]) != prev_len_prop:
+    guardar_estado_json(shared_data)
 
 # ----------------------------------------------------
 # AVISO DE ÚLTIMO DÍA DE CICLO (MARTES) - FIJO EN LA PARTE SUPERIOR
@@ -554,6 +613,7 @@ elif st.session_state["pagina"] == "baja_paciente":
         if st.button("📤 Enviar Propuesta de Baja", use_container_width=True) and paciente_seleccionado:
             info_p = shared_data["lista_pacientes"][paciente_seleccionado]
             shared_data["solicitudes_baja"].append({"id": str(uuid.uuid4())[:8], "etiqueta": paciente_seleccionado, "nombre": info_p["nombre"], "ref": info_p["ref"], "estado": "Pendiente", "fecha": datetime.now().strftime("%d/%m/%Y %H:%M")})
+            guardar_estado_json(shared_data)
             st.success("¡Enviada correctamente!"); time.sleep(1.5); st.rerun()
 
         st.markdown("---")
@@ -565,6 +625,7 @@ elif st.session_state["pagina"] == "baja_paciente":
             if any(b.get("estado", "").startswith("Validada") for b in shared_data["solicitudes_baja"]):
                 if st.button("🧹 Quitar Validadas", use_container_width=True):
                     shared_data["solicitudes_baja"] = [b for b in shared_data["solicitudes_baja"] if not b.get("estado", "").startswith("Validada")]
+                    guardar_estado_json(shared_data)
                     st.rerun()
 
         if shared_data["solicitudes_baja"]: 
@@ -583,17 +644,25 @@ elif st.session_state["pagina"] == "baja_paciente":
             with c_yes:
                 if st.button("✔️ CONFIRMAR BAJA", use_container_width=True):
                     if info_conf["tipo"] == "directa_sin_dev":
-                        if info_conf["etiqueta"] in shared_data["lista_pacientes"]: del shared_data["lista_pacientes"][info_conf["etiqueta"]]
+                        if info_conf["etiqueta"] in shared_data["lista_pacientes"]: 
+                            del shared_data["lista_pacientes"][info_conf["etiqueta"]]
+                            guardar_pacientes_excel(shared_data["lista_pacientes"])
                         st.success("¡Paciente dado de baja correctamente!")
                     elif info_conf["tipo"] == "propuesta_sin_dev":
-                        if info_conf["etiqueta"] in shared_data["lista_pacientes"]: del shared_data["lista_pacientes"][info_conf["etiqueta"]]
+                        if info_conf["etiqueta"] in shared_data["lista_pacientes"]: 
+                            del shared_data["lista_pacientes"][info_conf["etiqueta"]]
+                            guardar_pacientes_excel(shared_data["lista_pacientes"])
                         if "baja_ref" in info_conf and info_conf["baja_ref"] in shared_data["solicitudes_baja"]:
                             info_conf["baja_ref"]["estado"] = "Validada sin devolución"
+                            guardar_estado_json(shared_data)
                         st.success("¡Baja procesada!")
                     elif info_conf["tipo"] == "finalizar_dev":
-                        if info_conf["etiqueta"] in shared_data["lista_pacientes"]: del shared_data["lista_pacientes"][info_conf["etiqueta"]]
+                        if info_conf["etiqueta"] in shared_data["lista_pacientes"]: 
+                            del shared_data["lista_pacientes"][info_conf["etiqueta"]]
+                            guardar_pacientes_excel(shared_data["lista_pacientes"])
                         if "baja_ref" in info_conf and info_conf["baja_ref"] in shared_data["solicitudes_baja"]:
                             info_conf["baja_ref"]["estado"] = "Validada con devolución"
+                            guardar_estado_json(shared_data)
                         st.session_state["baja_proceso_devolucion"] = None
                         st.session_state["df_devolucion_admin"] = pd.DataFrame(columns=['Medicamento', 'Descripción', 'CN', 'Lote', 'Caducidad', 'Serie', 'Pastillas restantes'])
                         st.success("¡Baja completada con devolución!")
@@ -715,6 +784,7 @@ elif st.session_state["pagina"] == "alta_paciente":
                         "observacion": "", 
                         "fecha": datetime.now().strftime("%d/%m/%Y %H:%M")
                     })
+                    guardar_estado_json(shared_data)
                     st.success("¡Propuesta enviada correctamente!")
                     st.session_state["alta_input_ref"] = ""
                     st.session_state["alta_input_nombre"] = ""
@@ -734,6 +804,7 @@ elif st.session_state["pagina"] == "alta_paciente":
             if any(a["estado"] == "Validada" for a in shared_data["solicitudes_alta"]):
                 if st.button("🧹 Quitar Validadas", use_container_width=True):
                     shared_data["solicitudes_alta"] = [a for a in shared_data["solicitudes_alta"] if a["estado"] != "Validada"]
+                    guardar_estado_json(shared_data)
                     st.rerun()
 
         for alta in shared_data["solicitudes_alta"]:
@@ -749,6 +820,7 @@ elif st.session_state["pagina"] == "alta_paciente":
                         st.session_state["df_alta_cargado"] = alta["datos"]
                         st.session_state["reset_alta_enf"] += 1 
                         shared_data["solicitudes_alta"].remove(alta)
+                        guardar_estado_json(shared_data)
                         st.rerun()
     else:
         tabs_admin = st.tabs(["⚡ Alta Directa", "📥 Carga Masiva (Excel)", "📋 Propuestas Pendientes"])
@@ -781,6 +853,7 @@ elif st.session_state["pagina"] == "alta_paciente":
                         shared_data["lista_pacientes"][f"{r_str} — {n_str}"] = {
                             "ref": r_str, "nombre": n_str, "cip": c_str, "hoja": r_str, "datos": df_final_dir
                         }
+                        guardar_pacientes_excel(shared_data["lista_pacientes"])
                         st.success("¡Paciente dado de alta correctamente!")
                         st.session_state["admin_alta_ref"] = ""
                         st.session_state["admin_alta_nombre"] = ""
@@ -857,6 +930,7 @@ elif st.session_state["pagina"] == "alta_paciente":
                                 }
                                 count_nuevos += 1
                                 
+                            guardar_pacientes_excel(shared_data["lista_pacientes"])
                             st.success(f"✅ ¡Carga masiva completada! Se han procesado {count_nuevos} pacientes exitosamente.")
                             time.sleep(2.5)
                             st.rerun()
@@ -887,6 +961,8 @@ elif st.session_state["pagina"] == "alta_paciente":
                                     alta["ref"] = ref_asignado.strip()
                                     shared_data["lista_pacientes"][f"{alta['ref']} — {alta['nombre']}"] = {"ref": alta["ref"], "nombre": alta["nombre"], "cip": alta["cip"], "hoja": alta["ref"], "datos": alta["datos"]}
                                     alta["estado"] = "Validada"
+                                    guardar_pacientes_excel(shared_data["lista_pacientes"])
+                                    guardar_estado_json(shared_data)
                                     st.success("¡Alta realizada!")
                                     time.sleep(1.0)
                                     st.rerun()
@@ -895,6 +971,7 @@ elif st.session_state["pagina"] == "alta_paciente":
                                 if observacion_input.strip(): 
                                     alta["estado"] = "Rechazada"
                                     alta["observacion"] = observacion_input.strip()
+                                    guardar_estado_json(shared_data)
                                     st.warning("Propuesta Rechazada.")
                                     time.sleep(1.0)
                                     st.rerun()
@@ -949,6 +1026,8 @@ elif st.session_state["pagina"] == "detalle_paciente":
                         shared_data["incidencias_activas"].append({"fecha": datetime.now().strftime("%d/%m/%Y %H:%M"), "ref_paciente": row["Código Paciente"], "paciente": row["Nombre Paciente"], "medicamento": row["Medicamento"], "cn": row["C.N."], "motivo": row.get("Motivo", ""), "observaciones": row.get("Observaciones", ""), "resuelta_por_enfermera": False})
                     info["datos"]["Incidencia"] = False
                     shared_data["lista_pacientes"][pk]["datos"] = info["datos"]
+                    guardar_estado_json(shared_data)
+                    guardar_pacientes_excel(shared_data["lista_pacientes"])
                     st.session_state["modo_incidencia"] = False; st.success("¡Incidencia enviada!"); time.sleep(1.5); st.rerun()
             with col_canc:
                 if st.button("❌ Cancelar", use_container_width=True): st.session_state["modo_incidencia"] = False; st.rerun()
@@ -1020,6 +1099,7 @@ elif st.session_state["pagina"] == "detalle_paciente":
                         
                         info["datos"] = pd.concat([df_p, pd.DataFrame([nueva_fila])], ignore_index=True)
                         shared_data["lista_pacientes"][pk]["datos"] = info["datos"]
+                        guardar_pacientes_excel(shared_data["lista_pacientes"])
                         st.success(f"¡Medicamento '{nombre_farmaco.strip()}' añadido correctamente!")
                         time.sleep(1.2)
                         st.rerun()
@@ -1120,6 +1200,7 @@ elif st.session_state["pagina"] == "detalle_paciente":
                             info["datos"].loc[idx, col_name] = df_edited_result.loc[idx, col_name]
                         
                 shared_data["lista_pacientes"][pk]["datos"] = info["datos"]
+                guardar_pacientes_excel(shared_data["lista_pacientes"])
                 st.rerun()
 
             if rol_actual == "admin":
@@ -1140,6 +1221,7 @@ elif st.session_state["pagina"] == "detalle_paciente":
                             if st.button(f"Desbloquear #{idx_med}", key=f"unblock_item_{pk}_{idx_med}", use_container_width=True):
                                 shared_data["solicitud_pedido"] = [p for p in shared_data["solicitud_pedido"] if not (str(p.get("ref", "")) == str(info["ref"]) and (str(p.get("cn", "")) == str(med_cn) or str(p.get("medicamento", "")) == str(med_nom)))]
                                 shared_data["pedidos_definitivos"] = [p for p in shared_data["pedidos_definitivos"] if not (str(p.get("ref", "")) == str(info["ref"]) and (str(p.get("cn", "")) == str(med_cn) or str(p.get("medicamento", "")) == str(med_nom)))]
+                                guardar_estado_json(shared_data)
                                 st.success("¡Medicamento desbloqueado con éxito!")
                                 time.sleep(1.0)
                                 st.rerun()
@@ -1168,7 +1250,9 @@ elif st.session_state["pagina"] == "detalle_paciente":
                                     enviados_count += 1
                             info["datos"]["Pedido"] = False
                             shared_data["lista_pacientes"][pk]["datos"] = info["datos"]
-                            st.success(f"¡{enviados_count} medicamentos enviados a propuesta (bloqueados en naranja pastel)!"); time.sleep(1.5); st.rerun()
+                            guardar_estado_json(shared_data)
+                            guardar_pacientes_excel(shared_data["lista_pacientes"])
+                            st.success(f"¡{enviados_count} medicamentos enviados a propuesta!"); time.sleep(1.5); st.rerun()
                         else: st.warning("Seleccione algún medicamento no bloqueado.")
                 else: st.info("ℹ️ Solo el farmacéutico gestiona los pedidos desde aquí.")
 
@@ -1259,6 +1343,7 @@ elif st.session_state["pagina"] == "seleccion_productos_enfermera":
                 shared_data["solicitud_pedido"] = [item for idx, item in enumerate(shared_data["solicitud_pedido"]) if idx not in indices_a_remover]
                 del st.session_state["propuesta_seleccion"]
                 del st.session_state["propuesta_cantidades"]
+                guardar_estado_json(shared_data)
                 st.success(f"¡Pedido definitivo generado correctamente!")
                 time.sleep(1.5); st.rerun()
             else: 
@@ -1282,6 +1367,7 @@ elif st.session_state["pagina"] == "solicitud_pedido_admin":
                 
                 if st.button(f"🔓 Desbloquear y Retirar de Propuesta #{idx}", key=f"unblock_prop_{idx}", use_container_width=True):
                     shared_data["solicitud_pedido"].pop(idx)
+                    guardar_estado_json(shared_data)
                     st.success("¡Medicamento desbloqueado y retirado de la propuesta con éxito!")
                     time.sleep(1.0)
                     st.rerun()
@@ -1344,6 +1430,7 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
                 cambios = True
 
         shared_data["pedidos_definitivos"] = df_defs_edited.to_dict(orient="records")
+        guardar_estado_json(shared_data)
         
         if cambios:
             st.rerun()
@@ -1395,6 +1482,8 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
                                 shared_data["lista_pacientes"][pk]["datos"] = df_p
                     shared_data["pedidos_definitivos"] = []
                     st.session_state["albaran_impreso"] = False
+                    guardar_estado_json(shared_data)
+                    guardar_pacientes_excel(shared_data["lista_pacientes"])
                     st.success("¡Actualizado y limpio!")
                     time.sleep(1.5)
                     st.rerun()
@@ -1416,6 +1505,8 @@ elif st.session_state["pagina"] == "pedidos_definitivos_admin":
                         shared_data["pedidos_definitivos"] = []
                         st.session_state["albaran_impreso"] = False
                         st.session_state["confirmar_borrado_sin_imprimir"] = False
+                        guardar_estado_json(shared_data)
+                        guardar_pacientes_excel(shared_data["lista_pacientes"])
                         st.success("¡Pedido eliminado sin imprimir!")
                         time.sleep(1.5)
                         st.rerun()
@@ -1473,6 +1564,7 @@ elif st.session_state["pagina"] == "incidencias":
             
             if st.button(btn_label, key=f"btn_inc_{i}", use_container_width=True):
                 item["resuelta_por_enfermera"] = not is_resuelta
+                guardar_estado_json(shared_data)
                 st.rerun()
                 
             st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
@@ -1482,6 +1574,7 @@ elif st.session_state["pagina"] == "incidencias":
             if st.button("🗑️ Validar y Eliminar Marcadas", use_container_width=True):
                 restantes = [item for item in shared_data["incidencias_activas"] if not item.get("resuelta_por_enfermera", False)]
                 shared_data["incidencias_activas"] = restantes
+                guardar_estado_json(shared_data)
                 st.success("¡Incidencias validadas y eliminadas correctamente!")
                 time.sleep(1.5)
                 st.rerun()
