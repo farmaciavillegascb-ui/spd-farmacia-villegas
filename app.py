@@ -1,7 +1,7 @@
 import os
 import io
 import json
-import re  # Librería para procesar el texto del DataMatrix
+import re
 # ----------------------------------------------------
 # FORZAR TEMA CLARO (LIGHT MODE) AUTOMÁTICAMENTE
 # ----------------------------------------------------
@@ -20,6 +20,12 @@ import unicodedata
 from fpdf import FPDF
 from datetime import datetime, timedelta
 
+# Configuración de rutas absolutas basadas en la ubicación del script
+CARPETA_ACTUAL = os.path.dirname(os.path.abspath(__file__)) if '__file__' in locals() else os.getcwd()
+EXCEL_PATH = os.path.join(CARPETA_ACTUAL, "Tratamientos_Por_Paciente.xlsx")
+ESTADO_JSON_PATH = os.path.join(CARPETA_ACTUAL, "estado_sistema.json")
+BD_MEDICAMENTOS_PATH = os.path.join(CARPETA_ACTUAL, "listado_de_medicamentos.xlsx")
+
 # Configuración de la página optimizada
 st.set_page_config(
     page_title="SPD FARMACIA VILLEGAS",
@@ -33,7 +39,6 @@ st.markdown("""
 <style>
     .block-container { padding-top: 0.5rem !important; padding-bottom: 2rem !important; padding-left: 1rem !important; padding-right: 1rem !important; }
     
-    /* Forzar fondo de la aplicación claro */
     .stApp, .main { background-color: #f7f9fc !important; }
     
     #MainMenu {visibility: hidden;} footer {visibility: hidden;} header {visibility: hidden;}
@@ -44,15 +49,12 @@ st.markdown("""
     .logo-title { font-size: 20px; font-weight: 800; color: #1e293b; letter-spacing: 0.5px; }
     .status-bar { display: flex; justify-content: space-between; align-items: center; background: #f8fafc !important; padding: 6px 12px; border-radius: 8px; font-size: 12px; color: #475569; font-weight: 600; margin-bottom: 10px; border: 1px solid #e2e8f0; }
     
-    /* FORZAR INPUTS EN BLANCO */
     div[data-baseweb="input"] > div { background-color: #ffffff !important; border: 1px solid #cbd5e1 !important; }
     input { background-color: #ffffff !important; color: #1e293b !important; -webkit-text-fill-color: #1e293b !important; font-weight: 500 !important; }
     
-    /* FORZAR SELECTORES EN BLANCO */
     div[data-baseweb="select"] > div { background-color: #ffffff !important; border: 1px solid #cbd5e1 !important; }
     div[data-baseweb="select"] * { color: #1e293b !important; }
     
-    /* FORZAR BOTONES EN BLANCO/CLARO */
     div.stButton > button { 
         width: 100% !important; 
         height: 52px !important; 
@@ -67,7 +69,6 @@ st.markdown("""
     }
     div.stButton > button:hover { background-color: #f1f5f9 !important; border-color: #0ea5e9 !important; color: #0284c7 !important; transform: translateY(-1px); }
     
-    /* FORZAR FORMULARIOS EN BLANCO */
     div[data-testid="stForm"] { background-color: #ffffff !important; border-color: #e2e8f0 !important; }
     
     [data-testid="column"] { display: flex !important; flex-direction: column !important; align-items: stretch !important; }
@@ -231,14 +232,13 @@ def generar_albaran_devolucion_pdf(nombre_paciente, ref_paciente, lista_devoluci
     return pdf.output(dest='S').encode('latin1')
 
 # ----------------------------------------------------
-# CARGA Y GUARDADO PERSISTENTE (EXCEL Y JSON)
+# CARGA Y GUARDADO PERSISTENTE (EXCEL Y JSON ABSOLUTOS)
 # ----------------------------------------------------
 @st.cache_data
 def cargar_base_medicamentos():
-    ruta_bd = "listado_de_medicamentos.xlsx"
-    if not os.path.exists(ruta_bd): return {}
+    if not os.path.exists(BD_MEDICAMENTOS_PATH): return {}
     try:
-        df_bd = pd.read_excel(ruta_bd, sheet_name=0, usecols=['Cod. Nacional', 'Laboratorio', 'Presentación'])
+        df_bd = pd.read_excel(BD_MEDICAMENTOS_PATH, sheet_name=0, usecols=['Cod. Nacional', 'Laboratorio', 'Presentación'])
         df_bd = df_bd.dropna(subset=['Cod. Nacional'])
         df_bd['CN'] = df_bd['Cod. Nacional'].astype(str).str.replace(r'\.0$', '', regex=True).str.zfill(6)
         partes = df_bd['Presentación'].astype(str).str.split(',', n=1, expand=True)
@@ -250,8 +250,6 @@ def cargar_base_medicamentos():
     except Exception: return {}
 
 BD_MEDICAMENTOS = cargar_base_medicamentos()
-EXCEL_PATH = "Tratamientos_Por_Paciente.xlsx"
-ESTADO_JSON_PATH = "estado_sistema.json"
 
 def cargar_datos_excel():
     if not os.path.exists(EXCEL_PATH): return {}
@@ -281,7 +279,6 @@ def cargar_datos_excel():
     return pacientes_dict
 
 def guardar_pacientes_excel(lista_pacientes_dict):
-    """Guarda de forma persistente todos los cambios de pacientes en el archivo Excel principal."""
     try:
         with pd.ExcelWriter(EXCEL_PATH, engine='openpyxl') as writer:
             for pk, info in lista_pacientes_dict.items():
@@ -295,7 +292,6 @@ def guardar_pacientes_excel(lista_pacientes_dict):
         print(f"Error al guardar el Excel de pacientes: {e}")
 
 def guardar_estado_json(shared_state):
-    """Guarda propuestas, pedidos, incidencias y solicitudes en un archivo JSON en disco."""
     try:
         data_to_save = {
             "solicitud_pedido": [
@@ -313,7 +309,6 @@ def guardar_estado_json(shared_state):
         print(f"Error al guardar el estado JSON: {e}")
 
 def cargar_estado_json():
-    """Carga propuestas, pedidos, incidencias y solicitudes desde el archivo JSON si existe."""
     if os.path.exists(ESTADO_JSON_PATH):
         try:
             with open(ESTADO_JSON_PATH, "r", encoding="utf-8") as f:
