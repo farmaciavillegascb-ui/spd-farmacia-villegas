@@ -6,7 +6,7 @@ import re
 # ----------------------------------------------------
 # CONFIGURACIÓN DE RUTAS FIJAS EN EL NAS (BEACLOUD)
 # ----------------------------------------------------
-CARPETA_ACTUAL = r"\\BEACLOUD\homes\Alberto\APLICACION WEB SPD"
+CARPETA_ACTUAL = r"Z:"
 EXCEL_PATH = os.path.join(CARPETA_ACTUAL, "Tratamientos_Por_Paciente.xlsx")
 ESTADO_JSON_PATH = os.path.join(CARPETA_ACTUAL, "estado_sistema.json")
 BD_MEDICAMENTOS_PATH = os.path.join(CARPETA_ACTUAL, "listado_de_medicamentos.xlsx")
