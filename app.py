@@ -2,9 +2,18 @@ import os
 import io
 import json
 import re
+
+# ----------------------------------------------------
+# CONFIGURACIÓN DE RUTAS FIJAS EN EL NAS (BEACLOUD)
+# ----------------------------------------------------
+CARPETA_ACTUAL = r"\\BEACLOUD\homes\Alberto\APLICACION WEB SPD"
+EXCEL_PATH = os.path.join(CARPETA_ACTUAL, "Tratamientos_Por_Paciente.xlsx")
+ESTADO_JSON_PATH = os.path.join(CARPETA_ACTUAL, "estado_sistema.json")
+BD_MEDICAMENTOS_PATH = os.path.join(CARPETA_ACTUAL, "listado_de_medicamentos.xlsx")
+
 # ----------------------------------------------------
 # FORZAR TEMA CLARO (LIGHT MODE) AUTOMÁTICAMENTE
-# ----------------------------------------------------
+# --------------------
 if not os.path.exists(".streamlit"):
     os.makedirs(".streamlit")
 config_path = ".streamlit/config.toml"
@@ -19,12 +28,6 @@ import uuid
 import unicodedata
 from fpdf import FPDF
 from datetime import datetime, timedelta
-
-# Configuración de rutas absolutas basadas en la ubicación del script
-CARPETA_ACTUAL = os.path.dirname(os.path.abspath(__file__)) if '__file__' in locals() else os.getcwd()
-EXCEL_PATH = os.path.join(CARPETA_ACTUAL, "Tratamientos_Por_Paciente.xlsx")
-ESTADO_JSON_PATH = os.path.join(CARPETA_ACTUAL, "estado_sistema.json")
-BD_MEDICAMENTOS_PATH = os.path.join(CARPETA_ACTUAL, "listado_de_medicamentos.xlsx")
 
 # Configuración de la página optimizada
 st.set_page_config(
@@ -232,7 +235,7 @@ def generar_albaran_devolucion_pdf(nombre_paciente, ref_paciente, lista_devoluci
     return pdf.output(dest='S').encode('latin1')
 
 # ----------------------------------------------------
-# CARGA Y GUARDADO PERSISTENTE (EXCEL Y JSON ABSOLUTOS)
+# CARGA Y GUARDADO PERSISTENTE (EXCEL Y JSON EN EL NAS)
 # ----------------------------------------------------
 @st.cache_data
 def cargar_base_medicamentos():
