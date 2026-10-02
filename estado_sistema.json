@@ -1,0 +1,48 @@
+{
+    "solicitud_pedido": [],
+    "pedidos_definitivos": [],
+    "incidencias_activas": [
+        {
+            "fecha": "29/09/2026 21:15",
+            "ref_paciente": "149JVP",
+            "paciente": "JULIA VILLENA PALACIOS",
+            "medicamento": "MEMANTINA PHARMA COMBIX 10 MG COMPRIMIDOS",
+            "cn": "7011064",
+            "motivo": "Modificar posología",
+            "observaciones": "KHKHKHFSLDF",
+            "resuelta_por_enfermera": false
+        },
+        {
+            "fecha": "29/09/2026 21:15",
+            "ref_paciente": "149JVP",
+            "paciente": "JULIA VILLENA PALACIOS",
+            "medicamento": "MIRTAZAPINA TEVA-RATIO 15 MG COMPRIMIDOS",
+            "cn": "7627869",
+            "motivo": "Medicación adelantada",
+            "observaciones": "DFSFSDFSDFSD",
+            "resuelta_por_enfermera": false
+        },
+        {
+            "fecha": "29/09/2026 21:15",
+            "ref_paciente": "149JVP",
+            "paciente": "JULIA VILLENA PALACIOS",
+            "medicamento": "PANTOPRAZOL CINFA 20 MG COMPRIMIDOS",
+            "cn": "6635414",
+            "motivo": "Lo consume?",
+            "observaciones": "FDSFDFSDF",
+            "resuelta_por_enfermera": false
+        },
+        {
+            "fecha": "29/09/2026 21:15",
+            "ref_paciente": "149JVP",
+            "paciente": "JULIA VILLENA PALACIOS",
+            "medicamento": "ZOLPIDEM CINFA 10 MG COMPRIMIDOS RECUBIERTOS CON",
+            "cn": "8288069",
+            "motivo": "Otros",
+            "observaciones": "DSLFJBSKDFBKSDBJF",
+            "resuelta_por_enfermera": false
+        }
+    ],
+    "solicitudes_alta": [],
+    "solicitudes_baja": []
+}

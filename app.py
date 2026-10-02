@@ -640,7 +640,7 @@ elif st.session_state["pagina"] == "baja_paciente":
             
             c_yes, c_no = st.columns(2)
             with c_yes:
-                if st.button("✔️ CONFIRMAR BAJA", use_container_width=True):
+                if st.button("✔️️ CONFIRMAR BAJA", use_container_width=True):
                     if info_conf["tipo"] == "directa_sin_dev":
                         if info_conf["etiqueta"] in shared_data["lista_pacientes"]: 
                             del shared_data["lista_pacientes"][info_conf["etiqueta"]]
@@ -748,7 +748,7 @@ elif st.session_state["pagina"] == "baja_paciente":
     if st.button("⬅ Volver al Menú", use_container_width=True): st.session_state["pagina"] = "inicio"; st.rerun()
 
 # ----------------------------------------------------
-# GESTIÓN DE ALTAS
+# GESTIÓN DE ALTAS (CON BORRADO AUTOMÁTICO DE FORMULARIO)
 # ----------------------------------------------------
 elif st.session_state["pagina"] == "alta_paciente":
     if "altas" not in permisos_usuario: st.stop()
@@ -762,9 +762,9 @@ elif st.session_state["pagina"] == "alta_paciente":
 
         st.markdown("##### 📝 Nueva Propuesta de Alta")
         with st.container(border=True):
-            ref_input = st.text_input("Código del Paciente (Ref) - [Lo asignará Farmacia]:", value=st.session_state.get("alta_input_ref", ""), key=f"ref_enf_{rk}")
-            nom_input = st.text_input("Nombre Completo (Obligatorio):", value=st.session_state.get("alta_input_nombre", ""), key=f"nom_enf_{rk}")
-            cip_input = st.text_input("Código CIP (Obligatorio):", value=st.session_state.get("alta_input_cip", ""), key=f"cip_enf_{rk}")
+            ref_input = st.text_input("Código del Paciente (Ref) - [Lo asignará Farmacia]:", key=f"ref_enf_{rk}")
+            nom_input = st.text_input("Nombre Completo (Obligatorio):", key=f"nom_enf_{rk}")
+            cip_input = st.text_input("Código CIP (Obligatorio):", key=f"cip_enf_{rk}")
             
             meds_editadas = st.data_editor(st.session_state["df_alta_cargado"], num_rows="dynamic", key=f"editor_alta_paciente_{rk}", use_container_width=True)
             
@@ -784,15 +784,12 @@ elif st.session_state["pagina"] == "alta_paciente":
                     })
                     guardar_estado_json(shared_data)
                     st.success("¡Propuesta enviada correctamente!")
-                    st.session_state["alta_input_ref"] = ""
-                    st.session_state["alta_input_nombre"] = ""
-                    st.session_state["alta_input_cip"] = ""
                     st.session_state["df_alta_cargado"] = pd.DataFrame(columns=['Medicamento', 'CN', 'Posologia', 'Ultima Entrega'])
                     st.session_state["reset_alta_enf"] += 1 
                     time.sleep(1.0)
                     st.rerun()
                 else: 
-                    st.warning("⚠️ El Nombre Completo y el Código CIP son campos obligatorios.")
+                    st.warning("⚠️ El Nombre Completo y el Código CIP są campos obligatorios.")
 
         st.markdown("---")
         c_tit, c_btn = st.columns([0.6, 0.4], gap="large")
@@ -812,11 +809,7 @@ elif st.session_state["pagina"] == "alta_paciente":
                 if alta["estado"] == "Rechazada":
                     st.error(f"❌ Motivo de rechazo: {alta['observacion']}")
                     if st.button(f"🔄 Corregir (Volcar a la ficha)", key=f"re_enviar_{alta['id']}", use_container_width=True): 
-                        st.session_state["alta_input_nombre"] = alta["nombre"]
-                        st.session_state["alta_input_cip"] = alta["cip"]
-                        st.session_state["alta_input_ref"] = alta["ref"]
                         st.session_state["df_alta_cargado"] = alta["datos"]
-                        st.session_state["reset_alta_enf"] += 1 
                         shared_data["solicitudes_alta"].remove(alta)
                         guardar_estado_json(shared_data)
                         st.rerun()
@@ -831,9 +824,9 @@ elif st.session_state["pagina"] == "alta_paciente":
 
             st.markdown("##### ⚡ Alta Directa Individual")
             with st.container(border=True):
-                ref_dir = st.text_input("Código del Paciente (Ref):", value=st.session_state.get("admin_alta_ref", ""), key=f"ref_adm_{rk_admin}")
-                nom_dir = st.text_input("Nombre Completo:", value=st.session_state.get("admin_alta_nombre", ""), key=f"nom_adm_{rk_admin}")
-                cip_dir = st.text_input("Código CIP:", value=st.session_state.get("admin_alta_cip", ""), key=f"cip_adm_{rk_admin}")
+                ref_dir = st.text_input("Código del Paciente (Ref):", key=f"ref_adm_{rk_admin}")
+                nom_dir = st.text_input("Nombre Completo:", key=f"nom_adm_{rk_admin}")
+                cip_dir = st.text_input("Código CIP:", key=f"cip_adm_{rk_admin}")
                 meds_dir_edit = st.data_editor(st.session_state["df_alta_admin_directo"], num_rows="dynamic", key=f"editor_alta_admin_{rk_admin}", use_container_width=True)
                 
                 if st.button("✅ Dar de Alta Directamente", use_container_width=True):
@@ -853,9 +846,6 @@ elif st.session_state["pagina"] == "alta_paciente":
                         }
                         guardar_pacientes_excel(shared_data["lista_pacientes"])
                         st.success("¡Paciente dado de alta correctamente!")
-                        st.session_state["admin_alta_ref"] = ""
-                        st.session_state["admin_alta_nombre"] = ""
-                        st.session_state["admin_alta_cip"] = ""
                         st.session_state["df_alta_admin_directo"] = pd.DataFrame(columns=['Medicamento', 'CN', 'Posologia', 'Ultima Entrega'])
                         st.session_state["reset_alta_admin"] += 1
                         time.sleep(1.0)
